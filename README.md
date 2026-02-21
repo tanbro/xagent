@@ -12,6 +12,15 @@
 
 ---
 
+## 🎬 See Xagent Think
+
+Give it a goal.
+Watch it plan, select tools, execute, and deliver.
+
+![Xagent Demo](./assets/task.gif)
+
+---
+
 ## ⚡ The Problem
 
 **Workflow builders are rigid. They break when requirements change.**
@@ -139,6 +148,19 @@ Built for real production use:
 - Multi-user support
 
 **Operate agents like real systems — not demos.**
+
+---
+
+## Stay Ahead
+
+Xagent is actively developed and rapidly evolving.
+
+![Stay Ahead](./assets/xagent_stay_ahead.gif)
+
+**Follow our progress:**
+- ⭐ Star us on GitHub to stay updated
+- 🐛 Report issues and request features
+- 💬 Join our community discussions
 
 ---
 
