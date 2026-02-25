@@ -643,6 +643,7 @@ Build when you need.`
       emptyContent: "文件内容为空",
       errors: {
         loadFailed: "文件加载失败",
+        docxRenderFailed: "DOCX 预览渲染失败",
         cors: "CORS 错误：无法访问文件。这可能是浏览器缓存问题，请尝试刷新页面。",
         networkErrorWithMsg: "网络错误：{msg}",
       },
@@ -1062,11 +1063,11 @@ Build when you need.`
     tabs: {
       llm: "LLM 模型",
       embedding: "Embedding 模型",
-      image: "图像模型",
+      image: "图像生成模型",
     },
     section: {
       enabledModels: "已启用模型",
-      configuredCount: "已配置 {{count}} 个",
+      configuredCount: "已配置 {count} 个",
       exploreProviders: "模型供应商",
     },
     deleteConfirm: "确定要删除这个模型吗？",

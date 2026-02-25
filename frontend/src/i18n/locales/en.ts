@@ -643,6 +643,7 @@ Build when you need.`
       emptyContent: "File content is empty",
       errors: {
         loadFailed: "Failed to load file",
+        docxRenderFailed: "Failed to render DOCX preview",
         cors: "CORS error: Unable to access the file. This might be a browser cache issue, please try refreshing the page.",
         networkErrorWithMsg: "Network error: {msg}",
       },
@@ -1062,11 +1063,11 @@ Build when you need.`
     tabs: {
       llm: "LLM Models",
       embedding: "Embedding Models",
-      image: "Image Models",
+      image: "Image Generation Models",
     },
     section: {
       enabledModels: "Enabled Models",
-      configuredCount: "{{count}} configured",
+      configuredCount: "{count} configured",
       exploreProviders: "Model Providers",
     },
     deleteConfirm: "Are you sure you want to delete this model?",
