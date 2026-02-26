@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/contexts/app-context-chat';
+import { useI18n } from '@/contexts/i18n-context';
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -44,6 +45,8 @@ interface TraceEvent {
     model_name?: string;
     tool_name?: string;
     tool_args?: ToolArgs;
+    selected?: boolean;
+    skill_name?: string;
     response?: {
       reasoning?: string;
       tool_name?: string;
@@ -101,6 +104,7 @@ interface TraceEventRendererProps {
 
 // Process trace events into steps
 function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
+  const { t } = useI18n();
   return useMemo(() => {
     const stepsMap = new Map<string, ProcessedStep>();
     let currentReactStepId: string | null = null;
@@ -116,6 +120,10 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
     };
 
     events.forEach((event, index) => {
+      if (event.event_type?.startsWith('skill_select')) {
+        return;
+      }
+
       let stepId = event.step_id || (event.data?.step_id as string) || 'default';
 
       if (event.event_type === 'react_task_start' || event.event_type === 'task_start_react') {
@@ -147,15 +155,15 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
 
       // Process different event types
       if (event.event_type === 'dag_step_start' || event.event_type === 'react_task_start') {
-        step.stepName = (event.data?.step_name as string) || (event.event_type === 'react_task_start' ? 'Task Execution' : '');
+        step.stepName = (event.data?.step_name as string) || (event.event_type === 'react_task_start' ? t('traceEventRenderer.taskExecution') : '');
         step.description = (event.data?.description as string) || (event.data?.task as string) || '';
         step.status = 'running';
 
         const tools = event.data?.tool_names || event.data?.tools;
         if (tools && Array.isArray(tools)) {
-          step.tools = tools.map((t: any) => {
-            if (typeof t === 'string') return { function: { name: t } };
-            if (t?.function?.name) return t;
+          step.tools = tools.map((toolItem: any) => {
+            if (typeof toolItem === 'string') return { function: { name: toolItem } };
+            if (toolItem?.function?.name) return toolItem;
             return { function: { name: 'unknown' } };
           });
         }
@@ -165,7 +173,7 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
         step.actions.push({
           id: eventId,
           type: 'llm',
-          title: `Call LLM: ${event.data?.model_name || 'Unknown Model'}`,
+          title: t('traceEventRenderer.callLLM', { model: event.data?.model_name || t('traceEventRenderer.unknownModel') }),
           status: 'running',
           timestamp,
           data: { model: event.data?.model_name }
@@ -190,7 +198,7 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
            step.actions.push({
             id: eventId,
             type: 'llm',
-            title: 'LLM Response',
+            title: t('traceEventRenderer.llmResponse'),
             status: 'completed',
             timestamp,
             data: {
@@ -216,11 +224,11 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
           step.filePath = String(toolArgs.file_path);
         }
         // Support both data.response.tool_name and data.tool_name
-        const toolName = event.data?.response?.tool_name || event.data?.tool_name || 'unknown_tool';
+        const toolName = event.data?.response?.tool_name || event.data?.tool_name || t('traceEventRenderer.unknownTool');
 
         if (toolName) {
           // Merge with existing tools instead of replacing
-          if (!step.tools.some(t => t.function.name === toolName)) {
+          if (!step.tools.some(tItem => tItem.function.name === toolName)) {
             step.tools.push({ function: { name: toolName } });
           }
         }
@@ -228,7 +236,7 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
         step.actions.push({
           id: eventId,
           type: 'tool',
-          title: `Execute Tool: ${toolName}`,
+          title: t('traceEventRenderer.executeTool', { tool: toolName }),
           status: 'running',
           timestamp,
           data: {
@@ -264,7 +272,7 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
            step.actions.push({
             id: eventId,
             type: 'tool',
-            title: 'Tool Execution Finished',
+            title: t('traceEventRenderer.toolExecutionFinished'),
             status: 'completed',
             timestamp,
             data: { output }
@@ -280,28 +288,57 @@ function useProcessedSteps(events: TraceEvent[]): ProcessedStep[] {
         });
       }
 
-      if (event.event_type === 'dag_step_failed' || event.event_type === 'tool_execution_failed' || event.event_type === 'llm_call_failed' || event.event_type === 'react_task_failed') {
+      if (['dag_step_failed', 'tool_execution_failed', 'llm_call_failed', 'react_task_failed', 'agent_error', 'trace_error'].includes(event.event_type as string)) {
          step.status = 'failed';
 
-         const runningAction = step.actions.find(a => a.status === 'running');
+         // Extract error message with more fallback options
+         const errorData = event.data || {};
+         let errorMessage =
+            errorData.error ||
+            errorData.message;
+
+         if (!errorMessage && errorData.result) {
+            errorMessage = (errorData.result as any).error || (errorData.result as any).message;
+         }
+
+         if (!errorMessage && typeof errorData === 'string') {
+             errorMessage = errorData;
+         }
+
+         if (!errorMessage) {
+             errorMessage = t('traceEventRenderer.unknownError');
+         }
+
+         // Try to find specific action type based on event type
+         let runningAction = step.actions.find(a => a.status === 'running');
+
+         // If no running action found, or type mismatch, try to find the last action of corresponding type
+         if (event.event_type === 'tool_execution_failed') {
+             const lastTool = findLastRunningAction(step, 'tool');
+             if (lastTool) runningAction = lastTool;
+         } else if (event.event_type === 'llm_call_failed') {
+             const lastLlm = findLastRunningAction(step, 'llm');
+             if (lastLlm) runningAction = lastLlm;
+         }
+
          if (runningAction) {
              runningAction.status = 'failed';
-             runningAction.data.error = event.data?.error || event.data?.message;
+             runningAction.data.error = errorMessage;
          } else {
             step.actions.push({
                id: eventId,
                type: 'error',
-               title: 'Execution Failed',
+               title: t('traceEventRenderer.executionFailed'),
                status: 'failed',
                timestamp,
-               data: { error: event.data?.error || event.data?.message }
+               data: { error: errorMessage }
             });
          }
       }
     });
 
     return Array.from(stepsMap.values()).filter(step => step.stepName);
-  }, [events]);
+  }, [events, t]);
 }
 
 // Step Action Item Component
@@ -313,6 +350,7 @@ interface StepActionItemProps {
 }
 
 function StepActionItem({ action, onViewDetail, onOpenTerminal, onFileClick }: StepActionItemProps) {
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [userToggled, setUserToggled] = useState(false);
@@ -398,7 +436,7 @@ function StepActionItem({ action, onViewDetail, onOpenTerminal, onFileClick }: S
           )}
           {action.status === 'failed' && action.data.error && (
             <div className="text-red-400 text-sm pl-3 mt-1 whitespace-pre-wrap">
-              Error: {String(action.data.error)}
+              {t('traceEventRenderer.errorLabel')}{String(action.data.error)}
             </div>
           )}
         </div>
@@ -470,27 +508,27 @@ function StepActionItem({ action, onViewDetail, onOpenTerminal, onFileClick }: S
                             >
                                 <Terminal className="w-3.5 h-3.5 text-[#7aa2f7]" />
                                 <span className="text-xs text-[#a9b1d6] font-mono">
-                                  View {action.data.args?.file_path || 'Code & Output'}
+                                  {t('traceEventRenderer.view')} {action.data.args?.file_path || t('traceEventRenderer.codeAndOutput')}
                                 </span>
                                 <ChevronRight className="w-3 h-3 text-[#565f89] group-hover:translate-x-0.5 transition-transform" />
                             </button>
                          )}
                          {action.data.args && (
                              <div className="text-muted-foreground">
-                                 Args: {JSON.stringify(action.data.args)}
+                                 {t('traceEventRenderer.args')}: {JSON.stringify(action.data.args)}
                              </div>
                          )}
                          {action.data.output && (
                              <div className="pt-2 border-t border-border/30 text-muted-foreground/80 whitespace-pre-wrap">
-                                 Output: {typeof action.data.output === 'string' ? action.data.output : JSON.stringify(action.data.output, null, 2)}
+                                 {t('traceEventRenderer.output')}: {typeof action.data.output === 'string' ? action.data.output : JSON.stringify(action.data.output, null, 2)}
                              </div>
                          )}
                          {!action.data.output && isRunning && (
-                             <div className="text-muted-foreground italic">Executing...</div>
+                             <div className="text-muted-foreground italic">{t('traceEventRenderer.executing')}</div>
                          )}
                          {action.status === 'failed' && action.data.error && (
                              <div className="text-red-400 whitespace-pre-wrap pt-2 border-t border-red-500/30">
-                                 Error: {String(action.data.error)}
+                                 {t('traceEventRenderer.errorLabel')} {String(action.data.error)}
                              </div>
                          )}
                      </div>
@@ -523,8 +561,6 @@ function StepItem({ step, index, onOpenTerminal, onViewDetail, onFileClick }: St
   const isCompleted = step.status === 'completed';
   const isFailed = step.status === 'failed';
   const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
-
-  const toolName = step.tools[0]?.function?.name || 'execute_python_code';
 
   return (
     <motion.div
@@ -596,8 +632,23 @@ function StepItem({ step, index, onOpenTerminal, onViewDetail, onFileClick }: St
 
 // Main TraceEventRenderer Component
 export function TraceEventRenderer({ events }: TraceEventRendererProps) {
+  const { t } = useI18n();
   const steps = useProcessedSteps(events);
+
   const { openFilePreview, dispatch } = useApp();
+
+  const skillSelection = useMemo(() => {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i];
+      if (event.event_type === 'skill_select_end') {
+        if (event.data?.selected && event.data?.skill_name) {
+          return event.data.skill_name as string;
+        }
+        return null;
+      }
+    }
+    return null;
+  }, [events]);
 
   const getFileNameFromPath = (path?: string) => {
     if (!path) return '';
@@ -616,13 +667,13 @@ export function TraceEventRenderer({ events }: TraceEventRendererProps) {
     openFilePreview('', fileName);
     const contentSections: string[] = [];
     if (code && code.trim()) {
-      contentSections.push(`执行代码:\n\n${code.trim()}`);
+      contentSections.push(`${t('traceEventRenderer.executionCode')}\n\n${code.trim()}`);
     }
     if (output && String(output).trim()) {
-      contentSections.push(`\n\n输出结果:\n\n${String(output).trim()}`);
+      contentSections.push(`\n\n${t('traceEventRenderer.outputResult')}\n\n${String(output).trim()}`);
     }
     dispatch({ type: "SET_FILE_PREVIEW_CONTENT", payload: { content: contentSections.join('\n'), error: null } });
-  }, [openFilePreview, dispatch]);
+  }, [openFilePreview, dispatch, t]);
 
   const handleViewActionDetail = useCallback((action: StepAction) => {
     const title = `${action.title.replace(/\s+/g, '_')}.json`;
@@ -631,33 +682,41 @@ export function TraceEventRenderer({ events }: TraceEventRendererProps) {
     let content = '';
     // Better formatting for specific types
     if (action.type === 'tool') {
-        content = `Tool: ${action.data.tool}\n\nArguments:\n${JSON.stringify(action.data.args, null, 2)}`;
+        content = `${t('traceEventRenderer.toolLabel')}${action.data.tool}\n\n${t('traceEventRenderer.argumentsLabel')}\n${JSON.stringify(action.data.args, null, 2)}`;
         if (action.data.code) {
-          content += `\n\nCode:\n${action.data.code}`;
+          content += `\n\n${t('traceEventRenderer.codeLabel')}\n${action.data.code}`;
         }
         if (action.data.output) {
-          content += `\n\nOutput:\n${typeof action.data.output === 'string' ? action.data.output : JSON.stringify(action.data.output, null, 2)}`;
+          content += `\n\n${t('traceEventRenderer.outputLabel')}\n${typeof action.data.output === 'string' ? action.data.output : JSON.stringify(action.data.output, null, 2)}`;
         }
     } else if (action.type === 'llm') {
-        content = `Model: ${action.data.model}\n\nReasoning:\n${action.data.reasoning || '(No reasoning yet)'}`;
+        content = `${t('traceEventRenderer.modelLabel')}${action.data.model}\n\n${t('traceEventRenderer.reasoningLabel')}\n${action.data.reasoning || t('traceEventRenderer.noReasoning')}`;
         if (action.data.tool_calls) {
-           content += `\n\nTool Calls:\n${JSON.stringify(action.data.tool_calls, null, 2)}`;
+           content += `\n\n${t('traceEventRenderer.toolCallsLabel')}\n${JSON.stringify(action.data.tool_calls, null, 2)}`;
         }
     } else if (action.data.error) {
-        content = `Error:\n${String(action.data.error)}`;
+        content = `${t('traceEventRenderer.errorTitle')}\n${String(action.data.error)}`;
     } else {
         content = JSON.stringify(action.data, null, 2);
     }
 
     dispatch({ type: "SET_FILE_PREVIEW_CONTENT", payload: { content, error: null } });
-  }, [openFilePreview, dispatch]);
+  }, [openFilePreview, dispatch, t]);
 
-  if (steps.length === 0) {
+  if (steps.length === 0 && !skillSelection) {
     return null;
   }
 
   return (
     <div className="space-y-4">
+      {skillSelection && (
+        <div className="bg-muted/30 border border-border/50 rounded-lg p-3 flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-primary" />
+          <span className="text-sm">
+            {t('traceEventRenderer.skillSelected')}: <span className="font-medium">{skillSelection}</span>
+          </span>
+        </div>
+      )}
       <div className="flex gap-3">
         <div className="flex-1 space-y-4 overflow-hidden">
           {steps.map((step, index) => (

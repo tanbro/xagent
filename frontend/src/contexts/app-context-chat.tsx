@@ -795,7 +795,6 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 agentId: taskData.agent_id,
               }
             })
-            dispatch({ type: "TRIGGER_TASK_UPDATE" })
 
             // Check if this is a new task (created within last 5 seconds)
             // If so, we don't expect historical messages, so stop loading
@@ -2037,7 +2036,6 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               type: "UPDATE_TASK_STATUS",
               payload: { status: success ? "completed" : "failed" }
             })
-            dispatch({ type: "TRIGGER_TASK_UPDATE" })
           }
 
           // Execution Log Events
@@ -2384,6 +2382,32 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               }
             }
             dispatch({ type: "ADD_TRACE_EVENT", payload: traceEvent })
+          }
+          // Skill Selection Events
+          else if (eventType === "skill_select_start") {
+             const traceEvent: TraceEvent = {
+                event_id: generateMessageId("skill-select-start"),
+                event_type: eventType,
+                step_id: eventData.step_id,
+                timestamp: message.timestamp,
+                data: {
+                  action: t('agent.logs.event.actions.skillSelectStart'),
+                  ...eventData
+                }
+              }
+              dispatch({ type: "ADD_TRACE_EVENT", payload: traceEvent })
+          } else if (eventType === "skill_select_end") {
+             const traceEvent: TraceEvent = {
+                event_id: generateMessageId("skill-select-end"),
+                event_type: eventType,
+                step_id: eventData.step_id,
+                timestamp: message.timestamp,
+                data: {
+                  action: t('agent.logs.event.actions.skillSelectEnd'),
+                  ...eventData
+                }
+              }
+              dispatch({ type: "ADD_TRACE_EVENT", payload: traceEvent })
           }
           // Memory Events - 根据是否有step_id决定显示位置
           else if (eventType === "task_start_memory_generate") {
