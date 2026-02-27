@@ -69,7 +69,7 @@ class ToolFactory:
             "browser_wait_for_selector",
             "browser_close",
         ],
-        "pptx": [
+        "ppt": [
             "read_pptx",
             "unpack_pptx",
             "pack_pptx",
