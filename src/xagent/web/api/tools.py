@@ -123,117 +123,58 @@ async def get_available_tools(
         browser_tools_enabled=True,  # Enable browser automation tools
     )
 
-    # Use ToolFactory to create all tools and track their source category
-    tools: List[Dict[str, Any]] = []
-
-    # Create workspace for tool creation
+    # Use ToolFactory.create_all_tools() to get all tools
+    # This ensures consistency between backend execution and frontend display
     from ...core.tools.adapters.vibe.factory import ToolFactory
-    from ...core.workspace import WorkspaceManager
 
-    workspace_manager = WorkspaceManager()
-    workspace = workspace_manager.get_or_create_workspace(
-        "./uploads",
-        "tools_list",  # Generic workspace for listing tools
-    )
+    all_tools = await ToolFactory.create_all_tools(tool_config)
 
-    # Basic tools (always enabled if config allows)
-    if tool_config.get_basic_tools_enabled():
-        basic_tools = ToolFactory._create_basic_tools(workspace)
-        for tool in basic_tools:
-            tools.append(_create_tool_info(tool, "basic"))
+    # Get category map for category lookup
+    category_map = ToolFactory.get_tool_category_map()
 
-    # Knowledge base tools
-    knowledge_tools = ToolFactory._create_knowledge_tools()
-    for tool in knowledge_tools:
-        tools.append(_create_tool_info(tool, "knowledge"))
+    # Build reverse mapping: tool_name -> category
+    tool_name_to_category: Dict[str, str] = {}
+    for category, tool_names in category_map.items():
+        for tool_name in tool_names:
+            tool_name_to_category[tool_name] = category
 
-    # File tools (workspace-bound)
-    if tool_config.get_file_tools_enabled() and workspace:
-        file_tools = ToolFactory._create_file_tools(workspace)
-        for tool in file_tools:
-            tools.append(_create_tool_info(tool, "file"))
+    # Helper function to get category from tool
+    def get_tool_category(tool: Any) -> str:
+        """Get category for a tool using multiple strategies."""
+        tool_name = tool.name if hasattr(tool, "name") else str(tool)
 
-    # Vision tools
-    vision_model = tool_config.get_vision_model()
-    if vision_model:
-        vision_tools = get_vision_tool(vision_model=vision_model, workspace=workspace)
-        for tool in vision_tools:
-            tools.append(_create_tool_info(tool, "vision", vision_model=vision_model))
+        # Strategy 1: Look up in category map
+        if tool_name in tool_name_to_category:
+            return tool_name_to_category[tool_name]
 
-    # Image tools
-    image_models = tool_config.get_image_models()
-    if image_models:
-        default_generate_model = tool_config.get_image_generate_model()
-        default_edit_model = tool_config.get_image_edit_model()
-        image_tools = create_image_tool(
-            image_models,
-            workspace=workspace,
-            default_generate_model=default_generate_model,
-            default_edit_model=default_edit_model,
-        )
-        for tool in image_tools:
-            tools.append(_create_tool_info(tool, "image", image_models=image_models))
+        # Strategy 2: Use tags to infer category
+        if hasattr(tool, "tags"):
+            tags = tool.tags
+            if "browser" in tags:
+                return "browser"
+            if "pptx" in tags:
+                return "ppt"
+            if "knowledge" in tags:
+                return "knowledge"
+            if "mcp" in tags:
+                return "mcp"
+            if "agent" in tags:
+                return "agent"
 
-    # Special image tools (workspace-bound)
-    if workspace:
-        special_image_tools = ToolFactory._create_special_image_tools(workspace)
-        for tool in special_image_tools:
-            tools.append(_create_tool_info(tool, "special_image"))
+        # Strategy 3: Check tag[0] for common categories
+        if hasattr(tool, "tags") and tool.tags:
+            first_tag: str = tool.tags[0]
+            if first_tag in ["vision", "image", "file", "basic"]:
+                return first_tag
 
-    # MCP tools - Create using ToolFactory
-    try:
-        mcp_configs = tool_config.get_mcp_server_configs()
-        logger.info(f"mcp config: {mcp_configs}")
-        if mcp_configs:
-            logger.info(f"Loading MCP tools from {len(mcp_configs)} servers")
-            mcp_tools = await ToolFactory._create_mcp_tools_from_configs(mcp_configs)
-            logger.info(f"Loaded {len(mcp_tools)} MCP tools")
-            for tool in mcp_tools:
-                tools.append(_create_tool_info(tool, "mcp"))
-    except Exception as e:
-        logger.error(f"Failed to load MCP tools: {e}", exc_info=True)
-        # Continue without MCP tools rather than failing the entire request
+        # Default fallback
+        return "other"
 
-    # Browser automation tools
-    try:
-        if tool_config.get_browser_tools_enabled():
-            task_id = tool_config.get_task_id()
-            browser_tools = ToolFactory._create_browser_tools(task_id, workspace)
-            logger.info(f"Loaded {len(browser_tools)} browser automation tools")
-            for tool in browser_tools:
-                tools.append(_create_tool_info(tool, "browser"))
-    except Exception as e:
-        logger.error(f"Failed to load browser tools: {e}", exc_info=True)
-        # Continue without browser tools rather than failing the entire request
-
-    # Published agent tools
-    try:
-        if tool_config.get_enable_agent_tools():
-            task_id = tool_config.get_task_id()
-            agent_tools = ToolFactory._create_agent_tools(
-                db=db, user_id=int(current_user.id), task_id=task_id
-            )
-            logger.info(f"Loaded {len(agent_tools)} published agent tools")
-            for tool in agent_tools:
-                tools.append(_create_tool_info(tool, "agent"))
-    except Exception as e:
-        logger.error(f"Failed to load agent tools: {e}", exc_info=True)
-        # Continue without agent tools rather than failing the entire request
-
-    # PPTX presentation tools
-    try:
-        pptx_tools = ToolFactory._create_pptx_tools(
-            db=db,
-            user_id=int(current_user.id),
-            task_id=tool_config.get_task_id(),
-            config=tool_config,
-        )
-        logger.info(f"Loaded {len(pptx_tools)} PPTX tools")
-        for tool in pptx_tools:
-            tools.append(_create_tool_info(tool, "pptx"))
-    except Exception as e:
-        logger.error(f"Failed to load PPTX tools: {e}", exc_info=True)
-        # Continue without PPTX tools rather than failing the entire request
+    # Convert tools to API format with category information
+    tools: List[Dict[str, Any]] = []
+    for tool in all_tools:
+        category = get_tool_category(tool)
+        tools.append(_create_tool_info(tool, category))
 
     # Calculate tool usage count from ToolUsage table (execution stats)
     from collections import defaultdict
