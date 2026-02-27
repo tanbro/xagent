@@ -220,6 +220,21 @@ async def get_available_tools(
         logger.error(f"Failed to load agent tools: {e}", exc_info=True)
         # Continue without agent tools rather than failing the entire request
 
+    # PPTX presentation tools
+    try:
+        pptx_tools = ToolFactory._create_pptx_tools(
+            db=db,
+            user_id=int(current_user.id),
+            task_id=tool_config.get_task_id(),
+            config=tool_config,
+        )
+        logger.info(f"Loaded {len(pptx_tools)} PPTX tools")
+        for tool in pptx_tools:
+            tools.append(_create_tool_info(tool, "pptx"))
+    except Exception as e:
+        logger.error(f"Failed to load PPTX tools: {e}", exc_info=True)
+        # Continue without PPTX tools rather than failing the entire request
+
     # Calculate tool usage count from ToolUsage table (execution stats)
     from collections import defaultdict
 
