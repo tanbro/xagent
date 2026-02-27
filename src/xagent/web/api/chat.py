@@ -13,6 +13,7 @@ from ...core.agent.trace import Tracer
 from ...core.model.chat.basic.base import BaseLLM
 from ...core.model.chat.basic.openai import OpenAILLM
 from ...core.model.chat.basic.zhipu import ZhipuLLM
+from ...core.tools.adapters.vibe.factory import ToolFactory
 from ..auth_dependencies import get_current_user
 from ..config import ALLOWED_EXTERNAL_UPLOAD_DIRS, UPLOADS_DIR
 from ..dynamic_memory_store import get_memory_store
@@ -548,25 +549,8 @@ class AgentServiceManager:
                 if agent_config and agent_config.get("tool_categories"):
                     tool_categories = agent_config["tool_categories"]
 
-                    # Tool name to category mapping (hardcoded from code)
-                    TOOL_CATEGORY_MAP = {
-                        "vision": ["understand_images"],
-                        "image": ["generate_image", "edit_image"],
-                        "knowledge": ["search_knowledge_base", "list_knowledge_bases"],
-                        "file": [
-                            "read_file",
-                            "write_file",
-                            "list_directory",
-                            "file_search",
-                        ],
-                        "basic": ["calculator", "web_search", "zhipu_web_search"],
-                        "browser": [
-                            "browser_navigate",
-                            "browser_click",
-                            "browser_fill",
-                            "browser_extract",
-                        ],
-                    }
+                    # Use ToolFactory as the single source of truth for tool category mapping
+                    TOOL_CATEGORY_MAP = ToolFactory.get_tool_category_map()
 
                     allowed_tools = []
                     for category in tool_categories:

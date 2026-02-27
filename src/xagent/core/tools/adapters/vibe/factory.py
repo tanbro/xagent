@@ -9,7 +9,7 @@ and configuration management.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,78 @@ class ToolFactory:
     """
     Unified tool factory that handles tool creation with proper workspace binding.
     """
+
+    # Class-level single source of truth for tool category mapping
+    TOOL_CATEGORY_MAP: ClassVar[Dict[str, List[str]]] = {
+        "vision": ["understand_images"],
+        "image": ["generate_image", "edit_image"],
+        "knowledge": ["knowledge_search", "list_knowledge_bases"],
+        "file": [
+            "read_file",
+            "write_file",
+            "append_file",
+            "delete_file",
+            "list_files",
+            "create_directory",
+            "file_exists",
+            "get_file_info",
+            "read_json_file",
+            "write_json_file",
+            "read_csv_file",
+            "write_csv_file",
+            "get_workspace_output_files",
+            "edit_file",
+            "find_and_replace",
+        ],
+        "basic": [],  # Dynamically populated based on available APIs
+        "browser": [
+            "browser_navigate",
+            "browser_click",
+            "browser_fill",
+            "browser_screenshot",
+            "browser_extract_text",
+            "browser_evaluate",
+            "browser_list_sessions",
+            "browser_select_option",
+            "browser_wait_for_selector",
+            "browser_close",
+        ],
+        "pptx": [
+            "read_pptx",
+            "unpack_pptx",
+            "pack_pptx",
+            "clean_pptx",
+        ],
+    }
+
+    @staticmethod
+    def get_tool_category_map() -> Dict[str, List[str]]:
+        """
+        Get the tool category map (single source of truth).
+
+        The 'basic' category is dynamically populated based on available API keys.
+        All other categories return static tool lists.
+
+        Returns:
+            Dictionary mapping category names to lists of tool names
+        """
+        # Dynamically populate the 'basic' category based on available APIs
+        basic_tools = []
+
+        # Web search tools
+        if os.getenv("ZHIPU_API_KEY") or os.getenv("BIGMODEL_API_KEY"):
+            basic_tools.append("zhipu_web_search")
+        elif os.getenv("GOOGLE_API_KEY") and os.getenv("GOOGLE_CSE_ID"):
+            basic_tools.append("web_search")
+
+        # Code execution tools
+        basic_tools.extend(["execute_python_code", "execute_javascript"])
+
+        # Create a copy and update the basic category
+        result = ToolFactory.TOOL_CATEGORY_MAP.copy()
+        result["basic"] = basic_tools
+
+        return result
 
     @staticmethod
     async def create_all_tools(config: ToolConfig) -> List[Tool]:
@@ -121,7 +193,7 @@ class ToolFactory:
             )
             tools.extend(agent_tools)
 
-        # PPTX presentation tools (6 tools: read, generate, unpack, pack, add_slide, clean)
+        # PPTX presentation tools (4 tools: read, unpack, pack, clean)
         pptx_tools = ToolFactory._create_pptx_tools(
             db=config.get_db(),
             user_id=config.get_user_id(),
@@ -484,7 +556,7 @@ class ToolFactory:
             config: Tool configuration (unused, kept for compatibility)
 
         Returns:
-            List of PPTX tools (read, generate, unpack, pack, add_slide, clean)
+            List of PPTX tools (read, unpack, pack, clean)
         """
         try:
             from .pptx_tool import create_pptx_tool
