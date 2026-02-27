@@ -1818,6 +1818,7 @@ Build when you need.`
           ppt: "PowerPoint",
           office: "Office Tools",
           specialImage: "Image Tools",
+          database: "Database",
         },
       },
       suggestedPrompts: {

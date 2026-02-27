@@ -74,6 +74,7 @@ class ToolFactory:
             "pack_pptx",
             "clean_pptx",
         ],
+        "database": ["execute_sql_query"],
     }
 
     @staticmethod
@@ -201,6 +202,10 @@ class ToolFactory:
             config=config,
         )
         tools.extend(pptx_tools)
+
+        # Database tools (SQL query)
+        database_tools = ToolFactory._create_database_tools(workspace=workspace)
+        tools.extend(database_tools)
 
         # Filter tools by allowed_tools if specified
         allowed_tools = config.get_allowed_tools()
@@ -573,4 +578,35 @@ class ToolFactory:
             return pptx_tools
         except Exception as e:
             logger.error(f"Failed to create PPTX tools: {e}", exc_info=True)
+            return []
+
+    @staticmethod
+    def _create_database_tools(
+        workspace: Optional[TaskWorkspace] = None,
+    ) -> List[Tool]:
+        """Create SQL query tools for database operations.
+
+        Args:
+            workspace: Optional workspace for file-based operations
+
+        Returns:
+            List of database tools (execute_sql_query)
+        """
+        try:
+            # Check if any databases are configured
+            db_keys = [k for k in os.environ.keys() if k.startswith("XAGENT_DB_")]
+            if not db_keys:
+                logger.debug("No databases configured (no XAGENT_DB_* env vars)")
+                return []
+
+            from .sql_tool import SqlQueryTool
+
+            sql_tool = SqlQueryTool(workspace=workspace)
+            tools = sql_tool.get_tools()
+            logger.info(
+                f"Added {len(tools)} database tool(s) with {len(db_keys)} connection(s)"
+            )
+            return tools
+        except Exception as e:
+            logger.error(f"Failed to create database tools: {e}", exc_info=True)
             return []
