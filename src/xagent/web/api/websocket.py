@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from ...core.tools.adapters.vibe.factory import ToolFactory
 from ..auth_dependencies import get_user_from_websocket_token
 from ..models.user import User
 from ..tools.config import WebToolConfig
@@ -1886,20 +1887,8 @@ async def handle_build_preview_execution(
         # Note: tool names are stable, defined in code, no database storage needed
         allowed_tools = None
         if tool_categories:
-            # Tool name to category mapping (hardcoded in code, consistent with ToolFactory.create_all_tools implementation)
-            TOOL_CATEGORY_MAP = {
-                "vision": ["understand_images"],
-                "image": ["generate_image", "edit_image"],
-                "knowledge": ["search_knowledge_base", "list_knowledge_bases"],
-                "file": ["read_file", "write_file", "list_directory", "file_search"],
-                "basic": ["calculator", "web_search", "zhipu_web_search"],
-                "browser": [
-                    "browser_navigate",
-                    "browser_click",
-                    "browser_fill",
-                    "browser_extract",
-                ],
-            }
+            # Use ToolFactory as the single source of truth for tool category mapping
+            TOOL_CATEGORY_MAP = ToolFactory.get_tool_category_map()
 
             allowed_tools = []
             for category in tool_categories:
