@@ -5,6 +5,8 @@ This module provides file tools that are bound to specific workspace instances.
 Each tool instance operates within its designated workspace only.
 """
 
+
+from pathlib import Path
 from typing import Any, Dict, List
 
 from xagent.core.workspace import TaskWorkspace
@@ -21,15 +23,17 @@ class WorkspaceFileTools(WorkspaceFileOperations):
     file operations restricted to that workspace.
     """
 
-    def __init__(self, workspace: TaskWorkspace):
+    def __init__(self, workspace: TaskWorkspace, skills_root: str = ".xagent/skills"):
         """
         Initialize with workspace binding.
 
         Args:
             workspace: The workspace to bind to
+            skills_root: Root directory for skills (default: .xagent/skills)
         """
         self.inner = WorkspaceFileOperations(workspace)
         self.workspace = workspace
+        self.skills_root = skills_root
 
     def read_file(self, file_path: str, encoding: str = "utf-8") -> str:
         """Read file content in workspace"""
@@ -121,6 +125,128 @@ class WorkspaceFileTools(WorkspaceFileOperations):
         """Get output file list from current workspace"""
         return self.inner.get_workspace_output_files()
 
+    def read_skill_file(self, skill_name: str, file_path: str) -> str:
+        """
+        Read reference/resource files from a skill directory.
+
+        This allows accessing skill documentation (schema files, references, etc.)
+        that are stored in the skill directory outside of the workspace.
+
+        Args:
+            skill_name: Name of the skill
+            file_path: Relative path within the skill
+
+        Returns:
+            File content as string
+
+        Raises:
+            FileNotFoundError: If the skill file doesn't exist
+        """
+
+        skill_dir = Path(self.skills_root) / skill_name
+        full_path = skill_dir / file_path
+
+        if not full_path.exists():
+            # List available files for better error message
+            available_files = []
+            if skill_dir.exists():
+                for f in skill_dir.rglob("*"):
+                    if f.is_file():
+                        available_files.append(str(f.relative_to(skill_dir)))
+
+            raise FileNotFoundError(
+                f"File not found: '{file_path}' in skill '{skill_name}'\n"
+                f"Use list_skill_files('{skill_name}') to see available files."
+            )
+
+        return full_path.read_text(encoding="utf-8")
+
+    def list_skill_files(
+        self,
+        skill_name: str,
+        directory_path: str = ".",
+        show_hidden: bool = False,
+        recursive: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        List files in a skill directory.
+
+        This allows discovering what reference/resource files are available in a skill.
+        Behavior matches list_files() for consistency.
+
+        Args:
+            skill_name: Name of the skill
+            directory_path: Optional subdirectory path relative to the skill directory (default: '.' for all files)
+            show_hidden: Whether to show hidden files (default: False)
+            recursive: Whether to list recursively (default: True)
+
+        Returns:
+            Dict with keys:
+            - files: List of FileInfo objects (as dicts), with 'path' being relative to skill directory
+            - total_count: Number of files
+            - current_path: Full path to the searched directory
+            - directory: The skill name
+
+        Raises:
+            FileNotFoundError: If the skill directory doesn't exist
+        """
+        skill_dir = Path(self.skills_root) / skill_name
+
+        if not skill_dir.exists():
+            raise FileNotFoundError(
+                f"Skill not found: '{skill_name}'\n"
+                f"Please check the skill name is correct."
+            )
+
+        # Determine search path
+        if directory_path == ".":
+            search_path = skill_dir
+        else:
+            search_path = skill_dir / directory_path
+            if not search_path.exists():
+                raise FileNotFoundError(
+                    f"Directory not found: '{directory_path}' in skill '{skill_name}'"
+                )
+
+        files = []
+
+        def scan_directory(current_path: Path) -> None:
+            try:
+                for item in current_path.iterdir():
+                    if not show_hidden and item.name.startswith("."):
+                        continue
+
+                    stat = item.stat()
+                    # Use relative path as the "path" field for compatibility
+                    rel_path = item.relative_to(skill_dir)
+                    file_info = FileInfo(
+                        name=item.name,
+                        path=str(rel_path),
+                        size=stat.st_size,
+                        is_file=item.is_file(),
+                        is_dir=item.is_dir(),
+                        modified_time=stat.st_mtime,
+                    )
+                    files.append(file_info)
+
+                    if recursive and item.is_dir():
+                        scan_directory(item)
+
+            except PermissionError:
+                pass
+
+        scan_directory(search_path)
+
+        # Return relative path as current_path to avoid exposing system paths
+        relative_search_path = search_path.relative_to(skill_dir) if search_path != skill_dir else "."
+
+        return {
+            "files": [file.dict() for file in files],
+            "total_count": len(files),
+            "current_path": str(relative_search_path),
+            "directory": skill_name,
+        }
+
     def get_tools(self) -> List[FunctionTool]:
         """Get all tool instances"""
         return [
@@ -199,18 +325,61 @@ class WorkspaceFileTools(WorkspaceFileOperations):
                 name="find_and_replace",
                 description="Convenience function to find and replace text content in workspace. Use relative paths (e.g., 'filename.txt'), not absolute paths.",
             ),
+            FunctionTool(
+                self.read_skill_file,
+                name="read_skill_file",
+                description="""
+    Read reference/resource files from a skill directory.
+
+    Use this to access skill documentation like schema files, reference guides, and resources stored in the skill directory.
+
+    Args:
+        skill_name: Name of the skill
+        file_path: Relative path within the skill directory
+
+    Note: If you don't know the exact file path, use list_skill_files() first to see available files.
+""",
+            ),
+            FunctionTool(
+                self.list_skill_files,
+                name="list_skill_files",
+                description="""
+    List files in a skill directory.
+
+    Use this to discover what reference/resource files are available in a skill before reading them.
+    Returns FileInfo objects with name, path, size, is_file, is_dir, and modified_time.
+
+    Args:
+        skill_name: Name of the skill
+        directory_path: Optional subdirectory path relative to skill directory (default: '.' for all files)
+        show_hidden: Whether to show hidden files (default: False)
+        recursive: Whether to list recursively (default: True)
+
+    Returns:
+        Dict with keys:
+        - files: List of file info objects (path is relative to skill directory)
+        - total_count: Number of files
+        - current_path: Relative path to the searched directory (within the skill)
+        - directory: The skill name
+
+    Note: All paths are relative to the skill directory.
+""",
+            ),
         ]
 
 
-def create_workspace_file_tools(workspace: TaskWorkspace) -> List[FunctionTool]:
+def create_workspace_file_tools(
+    workspace: TaskWorkspace, skills_root: str = ".xagent/skills"
+) -> List[FunctionTool]:
     """
     Create list of file tools bound to specified workspace
 
     Args:
         workspace: Workspace to bind to
+        skills_root: Root directory for skills (default: .xagent/skills)
 
     Returns:
         List of tool instances
     """
-    tools_instance = WorkspaceFileTools(workspace)
+    tools_instance = WorkspaceFileTools(workspace, skills_root=skills_root)
     return tools_instance.get_tools()

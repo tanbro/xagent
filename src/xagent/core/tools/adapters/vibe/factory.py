@@ -55,6 +55,7 @@ class ToolFactory:
             "edit_file",
             "find_and_replace",
         ],
+        "skill": ["read_skill_file", "list_skill_files"],
         "basic": [],  # Dynamically populated based on available APIs
         "browser": [
             "browser_navigate",
