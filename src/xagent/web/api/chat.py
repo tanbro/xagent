@@ -157,7 +157,7 @@ async def create_default_tools(
     from ...core.tools.adapters.vibe.factory import ToolFactory
 
     # Use ToolFactory to create proper xagent tools
-    tools = await ToolFactory.create_all_tools(tool_config)  # type: ignore[arg-type]
+    tools = await ToolFactory.create_all_tools(tool_config)
 
     logger.info(f"Created {len(tools)} default tools using ToolFactory")
     return tools, tool_config
