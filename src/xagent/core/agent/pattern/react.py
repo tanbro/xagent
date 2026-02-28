@@ -1730,15 +1730,16 @@ Failed final answer:
                     }
                 )
 
-                # Raise an exception to indicate task failure
-                raise PatternExecutionError(
-                    pattern_name="ReAct",
-                    message=f"Task failed: {error_message}",
-                    context={
-                        "failure_reason": error_message,
-                        "failed_action": action.model_dump(),
-                    },
-                )
+                # Return failure result directly - LLM has decided the task cannot be completed
+                # This is consistent with LangChain's AgentFinish design: once LLM returns a final answer,
+                # the agent loop stops regardless of success/failure status
+                return {
+                    "type": "final_answer",
+                    "content": action.answer,
+                    "reasoning": action.reasoning,
+                    "success": False,
+                    "error": error_message,
+                }
 
             # Add action to conversation history
             messages.append(
