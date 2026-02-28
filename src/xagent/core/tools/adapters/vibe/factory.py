@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from .....web.models.mcp import MCPServer, UserMCPServer
 from ....workspace import TaskWorkspace
 from .base import Tool
-from .config import ToolConfig
+from .config import BaseToolConfig
 from .image_tool import create_image_tool
 
 # Import MCP function for test compatibility
@@ -106,7 +106,7 @@ class ToolFactory:
         return result
 
     @staticmethod
-    async def create_all_tools(config: ToolConfig) -> List[Tool]:
+    async def create_all_tools(config: BaseToolConfig) -> List[Tool]:
         """
         Create all tools based on configuration.
 

@@ -7,8 +7,6 @@ from typing import Any, DefaultDict, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ...core.tools.adapters.vibe.image_tool import create_image_tool
-from ...core.tools.adapters.vibe.vision_tool import get_vision_tool
 from ..auth_dependencies import get_current_user
 from ..models.database import get_db
 from ..models.tool_config import ToolUsage
