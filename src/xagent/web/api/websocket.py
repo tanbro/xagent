@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from ...core.tools.adapters.vibe.factory import ToolFactory
 from ..auth_dependencies import get_user_from_websocket_token
 from ..models.user import User
 from ..tools.config import WebToolConfig
@@ -1888,6 +1887,8 @@ async def handle_build_preview_execution(
         allowed_tools = None
         if tool_categories:
             # Use ToolFactory as the single source of truth for tool category mapping
+            from ...core.tools.adapters.vibe.factory import ToolFactory
+
             TOOL_CATEGORY_MAP = ToolFactory.get_tool_category_map()
 
             allowed_tools = []

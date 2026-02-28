@@ -13,7 +13,6 @@ from ...core.agent.trace import Tracer
 from ...core.model.chat.basic.base import BaseLLM
 from ...core.model.chat.basic.openai import OpenAILLM
 from ...core.model.chat.basic.zhipu import ZhipuLLM
-from ...core.tools.adapters.vibe.factory import ToolFactory
 from ..auth_dependencies import get_current_user
 from ..config import ALLOWED_EXTERNAL_UPLOAD_DIRS, UPLOADS_DIR
 from ..dynamic_memory_store import get_memory_store
@@ -550,6 +549,8 @@ class AgentServiceManager:
                     tool_categories = agent_config["tool_categories"]
 
                     # Use ToolFactory as the single source of truth for tool category mapping
+                    from ...core.tools.adapters.vibe.factory import ToolFactory
+
                     TOOL_CATEGORY_MAP = ToolFactory.get_tool_category_map()
 
                     allowed_tools = []
