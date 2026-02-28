@@ -13,14 +13,10 @@ from typing import Any, ClassVar, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from .....web.models.mcp import MCPServer, UserMCPServer
 from ....workspace import TaskWorkspace
 from .base import Tool
 from .config import BaseToolConfig
 from .image_tool import create_image_tool
-
-# Import MCP function for test compatibility
-from .mcp_adapter import load_mcp_tools_as_agent_tools
 from .vision_tool import get_vision_tool
 from .web_search import WebSearchTool
 from .zhipu_web_search import ZhipuWebSearchTool
@@ -383,7 +379,9 @@ class ToolFactory:
             List of MCP tools
         """
         try:
+            from .....web.models.mcp import MCPServer, UserMCPServer
             from ...core.mcp.manager.db import DatabaseMCPServerManager
+            from .mcp_adapter import load_mcp_tools_as_agent_tools
 
             # Load MCP server connections for the specific user
             manager = DatabaseMCPServerManager(db)
