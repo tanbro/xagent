@@ -5,7 +5,6 @@ This module provides file tools that are bound to specific workspace instances.
 Each tool instance operates within its designated workspace only.
 """
 
-
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -238,7 +237,9 @@ class WorkspaceFileTools(WorkspaceFileOperations):
         scan_directory(search_path)
 
         # Return relative path as current_path to avoid exposing system paths
-        relative_search_path = search_path.relative_to(skill_dir) if search_path != skill_dir else "."
+        relative_search_path = (
+            search_path.relative_to(skill_dir) if search_path != skill_dir else "."
+        )
 
         return {
             "files": [file.dict() for file in files],
@@ -328,6 +329,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             FunctionTool(
                 self.read_skill_file,
                 name="read_skill_file",
+                tags=["skill"],
                 description="""
     Read reference/resource files from a skill directory.
 
@@ -343,6 +345,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             FunctionTool(
                 self.list_skill_files,
                 name="list_skill_files",
+                tags=["skill"],
                 description="""
     List files in a skill directory.
 

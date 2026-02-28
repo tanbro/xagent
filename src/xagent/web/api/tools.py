@@ -80,6 +80,8 @@ def _create_tool_info(
         tool_type = "browser"
     elif category == "agent":
         tool_type = "agent"
+    elif category == "skill":
+        tool_type = "skill"
 
     return {
         "name": tool_name,
@@ -107,6 +109,7 @@ async def get_available_tools(
             self.credentials: Optional[Any] = None
 
     # Create WebToolConfig, now includes MCP tools
+    # Use a default task_id for workspace creation (required for file tools)
     tool_config = WebToolConfig(
         db=db,
         request=MockRequest(),
@@ -114,10 +117,10 @@ async def get_available_tools(
         is_admin=bool(current_user.is_admin),
         workspace_config={
             "base_dir": "./uploads",
-            "task_id": None,  # No task ID for listing available tools
+            "task_id": "tools-list",  # Use a default ID for listing available tools
         },
         include_mcp_tools=True,  # Enable MCP tools
-        task_id=None,  # No task ID needed for tool listing
+        task_id="tools-list",  # Use a default ID for tool listing
         browser_tools_enabled=True,  # Enable browser automation tools
     )
 
@@ -154,6 +157,8 @@ async def get_available_tools(
                 return "ppt"
             if "knowledge" in tags:
                 return "knowledge"
+            if "skill" in tags:
+                return "skill"
             if "mcp" in tags:
                 return "mcp"
             if "agent" in tags:
@@ -162,7 +167,7 @@ async def get_available_tools(
         # Strategy 3: Check tag[0] for common categories
         if hasattr(tool, "tags") and tool.tags:
             first_tag: str = tool.tags[0]
-            if first_tag in ["vision", "image", "file", "basic"]:
+            if first_tag in ["vision", "image", "file", "basic", "skill"]:
                 return first_tag
 
         # Default fallback
