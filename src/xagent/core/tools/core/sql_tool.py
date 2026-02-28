@@ -146,9 +146,9 @@ async def execute_sql_query(
                     file_ext = Path(output_file).suffix.lower()
                     if file_ext == ".csv":
                         # Async streaming export for large datasets
-                        result = await conn.stream(stmt)
+                        stream_result = await conn.stream(stmt)
                         _, exported_count, columns = await _async_stream_export_to_csv(
-                            workspace, output_file, result
+                            workspace, output_file, stream_result
                         )
                         return SQLQueryResult(
                             success=True,
@@ -159,13 +159,13 @@ async def execute_sql_query(
                         ).model_dump()
                     elif file_ext == ".parquet":
                         # Async streaming export with Parquet (better compression & type preservation)
-                        result = await conn.stream(stmt)
+                        stream_result = await conn.stream(stmt)
                         (
                             _,
                             exported_count,
                             columns,
                         ) = await _async_stream_export_to_parquet(
-                            workspace, output_file, result
+                            workspace, output_file, stream_result
                         )
                         return SQLQueryResult(
                             success=True,
@@ -176,13 +176,13 @@ async def execute_sql_query(
                         ).model_dump()
                     elif file_ext in (".json", ".jsonl", ".ndjson"):
                         # Async streaming JSON Lines (NDJSON) export
-                        result = await conn.stream(stmt)
+                        stream_result = await conn.stream(stmt)
                         (
                             _,
                             exported_count,
                             columns,
                         ) = await _async_stream_export_to_jsonlines(
-                            workspace, output_file, result
+                            workspace, output_file, stream_result
                         )
                         return SQLQueryResult(
                             success=True,
@@ -338,8 +338,8 @@ async def _async_stream_export_to_parquet(
         Tuple of (exported_file_path, row_count, column_names)
     """
     try:
-        import pyarrow as pa
-        import pyarrow.parquet as pq
+        import pyarrow as pa  # type: ignore[import-not-found]
+        import pyarrow.parquet as pq  # type: ignore[import-not-found]
     except ImportError:
         raise ImportError(
             "pyarrow is required for Parquet export. "
