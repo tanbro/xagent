@@ -761,7 +761,10 @@ class ReActPattern(AgentPattern):
                             self.tracer,
                             task_id,
                             TraceCategory.REACT,
-                            data={"result": result["content"], "success": success_status},
+                            data={
+                                "result": result["content"],
+                                "success": success_status,
+                            },
                         )
 
                     return {
