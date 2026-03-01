@@ -21,8 +21,9 @@ async def create_basic_tools(config: "BaseToolConfig") -> List[Any]:
     tools: List[Any] = []
     workspace = ToolFactory._create_workspace(config.get_workspace_config())
 
-    # Web search tool preference: Zhipu -> Google -> none
+    # Web search tool preference: Zhipu -> Tavily -> Google -> none
     zhipu_api_key = os.getenv("ZHIPU_API_KEY") or os.getenv("BIGMODEL_API_KEY")
+    tavily_api_key = os.getenv("TAVILY_API_KEY")
     google_api_key = os.getenv("GOOGLE_API_KEY")
     google_cse_id = os.getenv("GOOGLE_CSE_ID")
 
@@ -30,6 +31,10 @@ async def create_basic_tools(config: "BaseToolConfig") -> List[Any]:
         from .zhipu_web_search import ZhipuWebSearchTool
 
         tools.append(ZhipuWebSearchTool())
+    elif tavily_api_key:
+        from .tavily_web_search import TavilyWebSearchTool
+
+        tools.append(TavilyWebSearchTool())
     elif google_api_key and google_cse_id:
         from .web_search import WebSearchTool
 

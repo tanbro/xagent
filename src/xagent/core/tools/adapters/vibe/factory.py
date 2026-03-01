@@ -42,6 +42,7 @@ class ToolRegistry:
     """
 
     _tool_creators: List[Callable] = []
+    _modules_imported = False
 
     @classmethod
     def register(cls, creator: Callable) -> Callable:
@@ -60,8 +61,35 @@ class ToolRegistry:
         return creator
 
     @classmethod
+    def _import_tool_modules(cls):
+        """Import tool modules to trigger @register_tool decorator registration."""
+        if cls._modules_imported:
+            return
+
+        try:
+            # Import tool modules - these imports trigger @register_tool decorators
+            from . import agent_tools  # noqa
+            from . import basic_tools  # noqa
+            from . import browser_tools  # noqa
+            from . import file_tools  # noqa
+            from . import image_tools  # noqa
+            from . import knowledge_tools  # noqa
+            from . import mcp_tools  # noqa
+            from . import pptx_tool  # noqa
+            from . import special_image_tools  # noqa
+            from . import vision_tools  # noqa
+
+            cls._modules_imported = True
+            logger.info("Tool modules imported and registered")
+        except Exception as e:
+            logger.warning(f"Failed to import tool modules: {e}")
+
+    @classmethod
     async def create_registered_tools(cls, config: BaseToolConfig) -> List[Tool]:
         """Create tools from all registered creators."""
+        # Import tool modules on first call to trigger decorator registration
+        cls._import_tool_modules()
+
         tools = []
         for creator in cls._tool_creators:
             try:
