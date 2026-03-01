@@ -11,9 +11,16 @@ from typing import Dict, Optional
 from ....model.image.base import BaseImageModel
 from ....workspace import TaskWorkspace
 from ...core.image_tool import ImageGenerationToolCore
+from .base import ToolCategory
 from .function import FunctionTool
 
 logger = logging.getLogger(__name__)
+
+
+class ImageGenerationFunctionTool(FunctionTool):
+    """ImageGenerationFunctionTool with ToolCategory.IMAGE category."""
+
+    category = ToolCategory.IMAGE
 
 
 class ImageGenerationTool(ImageGenerationToolCore):
@@ -69,17 +76,17 @@ class ImageGenerationTool(ImageGenerationToolCore):
         )
 
         tools = [
-            FunctionTool(
+            ImageGenerationFunctionTool(
                 self.generate_image,
                 name="generate_image",
                 description=generate_description,
             ),
-            FunctionTool(
+            ImageGenerationFunctionTool(
                 self.edit_image,
                 name="edit_image",
                 description=edit_description,
             ),
-            FunctionTool(
+            ImageGenerationFunctionTool(
                 self.list_available_models,
                 name="list_image_models",
                 description="List all available image generation models, including model ID, availability status, and detailed description information (Note: model information is already provided in the generate_image tool description)",

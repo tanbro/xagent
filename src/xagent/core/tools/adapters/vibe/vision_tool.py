@@ -11,9 +11,16 @@ from xagent.core.workspace import TaskWorkspace
 
 from ....model.chat.basic.base import BaseLLM
 from ...core.vision_tool import DetectObjectsResult, UnderstandImagesResult, VisionCore
+from .base import ToolCategory
 from .function import FunctionTool
 
 logger = logging.getLogger(__name__)
+
+
+class VisionFunctionTool(FunctionTool):
+    """VisionFunctionTool with ToolCategory.VISION category."""
+
+    category = ToolCategory.VISION
 
 
 class VisionTool:
@@ -176,7 +183,7 @@ class VisionTool:
     def get_tools(self) -> list:
         """Get all tool instances."""
         tools = [
-            FunctionTool(
+            VisionFunctionTool(
                 self.understand_images,
                 name="understand_images",
                 description="""
@@ -215,7 +222,7 @@ Image requirements:
 The tool uses advanced vision AI models to provide detailed, accurate analysis of image content.
                 """.strip(),
             ),
-            FunctionTool(
+            VisionFunctionTool(
                 self.describe_images,
                 name="describe_images",
                 description="""
@@ -239,7 +246,7 @@ Parameters:
 Use this tool when you need descriptive text about images without asking specific questions.
                 """.strip(),
             ),
-            FunctionTool(
+            VisionFunctionTool(
                 self.detect_objects,
                 name="detect_objects",
                 description="""

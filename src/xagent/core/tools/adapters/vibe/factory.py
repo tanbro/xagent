@@ -9,7 +9,7 @@ and configuration management.
 
 import logging
 import os
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -32,79 +32,10 @@ logger = logging.getLogger(__name__)
 class ToolFactory:
     """
     Unified tool factory that handles tool creation with proper workspace binding.
+
+    Tool categories are self-describing - each tool declares its own category
+    via the metadata.category field. No need for manual category mapping.
     """
-
-    # Class-level single source of truth for tool category mapping
-    TOOL_CATEGORY_MAP: ClassVar[Dict[str, List[str]]] = {
-        "vision": ["understand_images"],
-        "image": ["generate_image", "edit_image"],
-        "knowledge": ["knowledge_search", "list_knowledge_bases"],
-        "file": [
-            "read_file",
-            "write_file",
-            "append_file",
-            "delete_file",
-            "list_files",
-            "create_directory",
-            "file_exists",
-            "get_file_info",
-            "read_json_file",
-            "write_json_file",
-            "read_csv_file",
-            "write_csv_file",
-            "get_workspace_output_files",
-            "edit_file",
-            "find_and_replace",
-        ],
-        "basic": [],  # Dynamically populated based on available APIs
-        "browser": [
-            "browser_navigate",
-            "browser_click",
-            "browser_fill",
-            "browser_screenshot",
-            "browser_extract_text",
-            "browser_evaluate",
-            "browser_list_sessions",
-            "browser_select_option",
-            "browser_wait_for_selector",
-            "browser_close",
-        ],
-        "ppt": [
-            "read_pptx",
-            "unpack_pptx",
-            "pack_pptx",
-            "clean_pptx",
-        ],
-    }
-
-    @staticmethod
-    def get_tool_category_map() -> Dict[str, List[str]]:
-        """
-        Get the tool category map (single source of truth).
-
-        The 'basic' category is dynamically populated based on available API keys.
-        All other categories return static tool lists.
-
-        Returns:
-            Dictionary mapping category names to lists of tool names
-        """
-        # Dynamically populate the 'basic' category based on available APIs
-        basic_tools = []
-
-        # Web search tools
-        if os.getenv("ZHIPU_API_KEY") or os.getenv("BIGMODEL_API_KEY"):
-            basic_tools.append("zhipu_web_search")
-        elif os.getenv("GOOGLE_API_KEY") and os.getenv("GOOGLE_CSE_ID"):
-            basic_tools.append("web_search")
-
-        # Code execution tools
-        basic_tools.extend(["execute_python_code", "execute_javascript"])
-
-        # Create a copy and update the basic category
-        result = ToolFactory.TOOL_CATEGORY_MAP.copy()
-        result["basic"] = basic_tools
-
-        return result
 
     @staticmethod
     async def create_all_tools(config: BaseToolConfig) -> List[Tool]:
@@ -154,9 +85,9 @@ class ToolFactory:
             )
             tools.extend(vision_tools)
 
-        # Image tools
+        # Image tools (require workspace)
         image_models = config.get_image_models()
-        if image_models:
+        if image_models and workspace:
             default_generate_model = config.get_image_generate_model()
             default_edit_model = config.get_image_edit_model()
             image_tools = create_image_tool(
@@ -223,17 +154,35 @@ class ToolFactory:
     def _create_workspace(
         workspace_config: Optional[Dict[str, Any]],
     ) -> Optional[TaskWorkspace]:
-        """Create workspace from configuration."""
+        """Create workspace from configuration.
+
+        Uses MockWorkspace for tool listing scenarios to avoid creating
+        unnecessary directories on disk.
+        """
         if not workspace_config:
             return None
 
         try:
+            task_id = workspace_config.get("task_id")
+
+            # Use MockWorkspace for tool listing scenarios
+            # This avoids creating unnecessary directories on disk
+            if task_id in ("tools_list", "_mock_", None):
+                from ....workspace import MockWorkspace
+
+                logger.debug(f"Using MockWorkspace for task_id='{task_id}'")
+                return MockWorkspace(
+                    id=task_id or "_mock_",
+                    base_dir=workspace_config.get("base_dir", "./uploads"),
+                )
+
+            # Real task - create actual workspace
             from ....workspace import WorkspaceManager
 
             workspace_manager = WorkspaceManager()
             workspace = workspace_manager.get_or_create_workspace(
                 workspace_config.get("base_dir", "./workspace"),
-                workspace_config.get("task_id", "default"),
+                task_id or "default",
             )
             return workspace
         except Exception as e:

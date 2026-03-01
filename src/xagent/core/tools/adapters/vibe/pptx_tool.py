@@ -12,14 +12,22 @@ from ...core.pptx_tool import (
     read_pptx,
     unpack_pptx,
 )
+from .base import ToolCategory
 from .function import FunctionTool
+
+logger = logging.getLogger(__name__)
+
+
+class PPTXTool(FunctionTool):
+    """PPTXTool with ToolCategory.PPT category."""
+
+    category = ToolCategory.PPT
+
 
 if TYPE_CHECKING:
     from ....workspace import TaskWorkspace
 else:
     TaskWorkspace = Any  # type: ignore[assignment]
-
-logger = logging.getLogger(__name__)
 
 
 class PPTXGenerationTool:
@@ -61,7 +69,7 @@ class PPTXGenerationTool:
     def get_tools(self) -> list:
         """Get all tool instances."""
         return [
-            FunctionTool(
+            PPTXTool(
                 self.read_pptx,
                 name="read_pptx",
                 description="""Read PPTX file and extract information.
@@ -81,7 +89,7 @@ Returns:
 """,
                 tags=["pptx", "presentation", "file"],
             ),
-            FunctionTool(
+            PPTXTool(
                 self.unpack_pptx,
                 name="unpack_pptx",
                 description="""Unpack PPTX file to directory for advanced editing.
@@ -103,7 +111,7 @@ Returns:
 """,
                 tags=["pptx", "presentation", "unpack", "editing"],
             ),
-            FunctionTool(
+            PPTXTool(
                 self.pack_pptx,
                 name="pack_pptx",
                 description="""Pack directory into PPTX file.
@@ -121,7 +129,7 @@ Returns:
 """,
                 tags=["pptx", "presentation", "pack", "editing"],
             ),
-            FunctionTool(
+            PPTXTool(
                 self.clean_pptx,
                 name="clean_pptx",
                 description="""Clean orphaned files from unpacked PPTX directory.
