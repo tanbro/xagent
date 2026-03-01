@@ -9,7 +9,7 @@ and configuration management.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,51 @@ from .web_search import WebSearchTool
 from .zhipu_web_search import ZhipuWebSearchTool
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["ToolFactory", "ToolRegistry", "register_tool"]
+
+
+class ToolRegistry:
+    """
+    Global registry for tool creators using decorator pattern.
+
+    Tools are registered using @register_tool decorator and automatically
+    discovered during create_all_tools().
+    """
+
+    _tool_creators: List[Callable] = []
+
+    @classmethod
+    def register(cls, creator: Callable) -> Callable:
+        """
+        Register a tool creator function.
+
+        The creator function will be called during create_all_tools()
+        with the current config.
+
+        Usage:
+            @register_tool
+            def create_my_tools(config: BaseToolConfig) -> List[Tool]:
+                return [MyTool(...)]
+        """
+        cls._tool_creators.append(creator)
+        return creator
+
+    @classmethod
+    async def create_registered_tools(cls, config: BaseToolConfig) -> List[Tool]:
+        """Create tools from all registered creators."""
+        tools = []
+        for creator in cls._tool_creators:
+            try:
+                created_tools = await creator(config)
+                tools.extend(created_tools)
+            except Exception as e:
+                logger.warning(f"Tool creator {creator.__name__} failed: {e}")
+        return tools
+
+
+# Decorator for easy import
+register_tool = ToolRegistry.register
 
 
 class ToolFactory:
@@ -125,15 +170,6 @@ class ToolFactory:
             )
             tools.extend(agent_tools)
 
-        # PPTX presentation tools (4 tools: read, unpack, pack, clean)
-        pptx_tools = ToolFactory._create_pptx_tools(
-            db=config.get_db(),
-            user_id=config.get_user_id(),
-            task_id=config.get_task_id(),
-            config=config,
-        )
-        tools.extend(pptx_tools)
-
         # Filter tools by allowed_tools if specified
         allowed_tools = config.get_allowed_tools()
         if allowed_tools is not None and len(allowed_tools) > 0:
@@ -145,6 +181,11 @@ class ToolFactory:
             logger.warning(
                 "⚠️ allowed_tools is empty list - this will filter out all tools! If you want to allow all tools, set allowed_tools to None"
             )
+
+        # Auto-discover tools from @register_tool decorators
+        discovered_tools = await ToolRegistry.create_registered_tools(config)
+        tools.extend(discovered_tools)
+        logger.info(f"Discovered {len(discovered_tools)} tools from decorators")
 
         logger.info(f"Created {len(tools)} tools from configuration")
         return tools
