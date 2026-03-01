@@ -19,9 +19,6 @@ from ....workspace import TaskWorkspace
 from .base import Tool
 from .config import BaseToolConfig
 
-# Import MCP function for test compatibility
-from .mcp_adapter import load_mcp_tools_as_agent_tools
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["ToolFactory", "ToolRegistry", "register_tool"]
@@ -61,17 +58,19 @@ class ToolRegistry:
             return
 
         try:
-            # Import tool modules - these imports trigger @register_tool decorators
-            from . import agent_tools  # noqa
-            from . import basic_tools  # noqa
-            from . import browser_tools  # noqa
-            from . import file_tools  # noqa
-            from . import image_tools  # noqa
-            from . import knowledge_tools  # noqa
-            from . import mcp_tools  # noqa
-            from . import pptx_tool  # noqa
-            from . import special_image_tools  # noqa
-            from . import vision_tools  # noqa
+            # Import tool modules in priority order - these imports trigger @register_tool decorators
+            from . import (  # noqa: F401 - imports trigger @register_tool decorators
+                agent_tools,
+                basic_tools,
+                browser_tools,
+                file_tools,
+                image_tools,
+                knowledge_tools,
+                mcp_tools,
+                pptx_tool,
+                special_image_tools,
+                vision_tools,
+            )
 
             cls._modules_imported = True
             logger.info("Tool modules imported and registered")
@@ -91,7 +90,49 @@ class ToolRegistry:
                 tools.extend(created_tools)
             except Exception as e:
                 logger.warning(f"Tool creator {creator.__name__} failed: {e}")
+
+        # Sort tools by category priority
+        tools = cls._sort_tools_by_category(tools)
         return tools
+
+    @classmethod
+    def _sort_tools_by_category(cls, tools: List[Tool]) -> List[Tool]:
+        """Sort tools by category priority.
+
+        Priority order (most important first):
+        1. BASIC - Basic tools (search, code execution)
+        2. KNOWLEDGE - Knowledge base search
+        3. FILE - File operations
+        4. VISION - Vision understanding
+        5. IMAGE - Image generation
+        6. BROWSER - Browser automation
+        7. PPT - PPT tools
+        8. MCP - MCP tools
+        9. AGENT - Agent tools (delegation)
+        10. OTHER - Other tools
+        """
+        from .base import ToolCategory
+
+        # Define category priority order
+        category_order = {
+            ToolCategory.BASIC: 0,
+            ToolCategory.KNOWLEDGE: 1,
+            ToolCategory.FILE: 2,
+            ToolCategory.VISION: 3,
+            ToolCategory.IMAGE: 4,
+            ToolCategory.BROWSER: 5,
+            ToolCategory.PPT: 6,
+            ToolCategory.MCP: 7,
+            ToolCategory.AGENT: 8,
+            ToolCategory.OTHER: 9,
+        }
+
+        def get_tool_priority(tool: Tool) -> int:
+            """Get priority for a tool based on its category."""
+            tool_category = tool.metadata.category
+            return category_order.get(tool_category, 99)
+
+        return sorted(tools, key=get_tool_priority)
 
 
 # Decorator for easy import
@@ -236,6 +277,7 @@ class ToolFactory:
         try:
             from .....web.models.mcp import MCPServer, UserMCPServer
             from ...core.mcp.manager.db import DatabaseMCPServerManager
+            from .mcp_adapter import load_mcp_tools_as_agent_tools
 
             # Load MCP server connections for the specific user
             manager = DatabaseMCPServerManager(db)

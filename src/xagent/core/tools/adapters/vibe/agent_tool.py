@@ -7,7 +7,7 @@ from typing import Any, Mapping, Optional, Type
 
 from pydantic import BaseModel, Field
 
-from .base import AbstractBaseTool, ToolVisibility
+from .base import AbstractBaseTool, ToolCategory, ToolVisibility
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class AgentTool(AbstractBaseTool):
 
     This allows published agents to be called as tools from other agents.
     """
+
+    # Agent tools belong to the AGENT category
+    category: ToolCategory = ToolCategory.AGENT
 
     def __init__(
         self,
