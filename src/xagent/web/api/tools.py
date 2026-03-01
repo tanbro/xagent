@@ -150,35 +150,9 @@ async def get_available_tools(
     def get_tool_category(tool: Any) -> str:
         """Get category from tool's self-describing metadata.
 
-        Tools should declare their category via metadata.category field.
-        Falls back to inference from tags if category is not set.
+        Tools declare their category via the category class attribute.
         """
-        # Strategy 1: Read from tool metadata (preferred)
-        if hasattr(tool, "metadata") and hasattr(tool.metadata, "category"):
-            return str(tool.metadata.category.value)
-
-        # Strategy 2: Use tags to infer category (fallback)
-        if hasattr(tool, "tags"):
-            tags = tool.tags
-            if "browser" in tags:
-                return "browser"
-            if "pptx" in tags:
-                return "ppt"
-            if "knowledge" in tags:
-                return "knowledge"
-            if "mcp" in tags:
-                return "mcp"
-            if "agent" in tags:
-                return "agent"
-            if "vision" in tags:
-                return "vision"
-            if "image" in tags:
-                return "image"
-            if "file" in tags:
-                return "file"
-
-        # Default fallback
-        return "other"
+        return str(tool.metadata.category.value)
 
     # Convert tools to API format with category information
     tools: List[Dict[str, Any]] = []
