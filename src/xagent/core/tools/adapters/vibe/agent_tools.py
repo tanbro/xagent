@@ -1,8 +1,9 @@
 """Agent tools registration using @register_tool decorator."""
 
 import logging
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, List
 
+from .base import AbstractBaseTool
 from .factory import register_tool
 
 if TYPE_CHECKING:
@@ -12,24 +13,27 @@ logger = logging.getLogger(__name__)
 
 
 @register_tool
-async def create_agent_tools(config: "WebToolConfig") -> List[Any]:
+async def create_agent_tools(config: "WebToolConfig") -> List[AbstractBaseTool]:
     """Create tools from published agents."""
     if not config.get_enable_agent_tools():
         return []
 
     try:
-        from .factory import ToolFactory
+        from .agent_tool import get_published_agents_tools
 
         db = config.get_db()
         user_id = config.get_user_id()
         if not user_id:
             return []
 
-        return ToolFactory._create_agent_tools(
+        excluded_agent_id = config.get_excluded_agent_id() if config else None
+
+        return get_published_agents_tools(
             db=db,
             user_id=user_id,
             task_id=config.get_task_id(),
-            config=config,
+            workspace_base_dir="uploads",
+            excluded_agent_id=excluded_agent_id,
         )
     except Exception as e:
         logger.warning(f"Failed to create agent tools: {e}")
