@@ -5,13 +5,16 @@ This module provides file tools that are bound to specific workspace instances.
 Each tool instance operates within its designated workspace only.
 """
 
-from typing import Any, Dict, List
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from xagent.core.workspace import TaskWorkspace
 
 from ...core.workspace_file_tool import FileInfo, WorkspaceFileOperations
 from .base import ToolCategory
 from .function import FunctionTool
+
+logger = logging.getLogger(__name__)
 
 
 class FileTool(FunctionTool):
@@ -221,3 +224,28 @@ def create_workspace_file_tools(workspace: TaskWorkspace) -> List[FunctionTool]:
     """
     tools_instance = WorkspaceFileTools(workspace)
     return tools_instance.get_tools()
+
+
+# Register tool creator for auto-discovery
+# Import at bottom to avoid circular import with factory
+from .factory import ToolFactory, register_tool  # noqa: E402
+
+if TYPE_CHECKING:
+    from .config import BaseToolConfig
+
+
+@register_tool
+async def create_file_tools(config: "BaseToolConfig") -> List[Any]:
+    """Create workspace-bound file tools."""
+    if not config.get_file_tools_enabled():
+        return []
+
+    workspace = ToolFactory._create_workspace(config.get_workspace_config())
+    if not workspace:
+        return []
+
+    try:
+        return create_workspace_file_tools(workspace)
+    except Exception as e:
+        logger.warning(f"Failed to create file tools: {e}")
+        return []

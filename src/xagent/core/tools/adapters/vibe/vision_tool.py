@@ -5,7 +5,7 @@ Framework wrapper around the pure vision core
 
 import logging
 import os
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 from xagent.core.workspace import TaskWorkspace
 
@@ -431,3 +431,27 @@ def get_vision_tool(
 
     tool_instance = VisionTool(vision_model, workspace)
     return tool_instance.get_tools()
+
+
+# Register tool creator for auto-discovery
+# Import at bottom to avoid circular import with factory
+from .factory import ToolFactory, register_tool  # noqa: E402
+
+if TYPE_CHECKING:
+    from .config import BaseToolConfig
+
+
+@register_tool
+async def create_vision_tools(config: "BaseToolConfig") -> List[Any]:
+    """Create vision understanding tools."""
+    vision_model = config.get_vision_model()
+    if not vision_model:
+        return []
+
+    workspace = ToolFactory._create_workspace(config.get_workspace_config())
+
+    try:
+        return get_vision_tool(vision_model=vision_model, workspace=workspace)
+    except Exception as e:
+        logger.warning(f"Failed to create vision tools: {e}")
+        return []

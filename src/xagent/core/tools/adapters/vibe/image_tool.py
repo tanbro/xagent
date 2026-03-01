@@ -6,7 +6,7 @@ passed from the web layer.
 """
 
 import logging
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ....model.image.base import BaseImageModel
 from ....workspace import TaskWorkspace
@@ -127,3 +127,37 @@ def create_image_tool(
         default_edit_model,
     )
     return tool_instance.get_tools()
+
+
+# Register tool creator for auto-discovery
+# Import at bottom to avoid circular import with factory
+from .factory import ToolFactory, register_tool  # noqa: E402
+
+if TYPE_CHECKING:
+    from .config import BaseToolConfig
+
+
+@register_tool
+async def create_image_tools_from_config(config: "BaseToolConfig") -> List[Any]:
+    """Create image generation tools from configuration."""
+    image_models = config.get_image_models()
+    if not image_models:
+        return []
+
+    workspace = ToolFactory._create_workspace(config.get_workspace_config())
+    if not workspace:
+        return []
+
+    try:
+        default_generate_model = config.get_image_generate_model()
+        default_edit_model = config.get_image_edit_model()
+
+        return create_image_tool(
+            image_models,
+            workspace=workspace,
+            default_generate_model=default_generate_model,
+            default_edit_model=default_edit_model,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to create image tools: {e}")
+        return []

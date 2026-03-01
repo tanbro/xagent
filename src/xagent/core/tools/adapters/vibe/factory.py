@@ -60,16 +60,16 @@ class ToolRegistry:
         try:
             # Import tool modules in priority order - these imports trigger @register_tool decorators
             from . import (  # noqa: F401 - imports trigger @register_tool decorators
-                agent_tools,
+                agent_tool,
                 basic_tools,
                 browser_tools,
-                file_tools,
-                image_tools,
+                image_tool,
                 knowledge_tools,
                 mcp_tools,
                 pptx_tool,
                 special_image_tools,
-                vision_tools,
+                vision_tool,
+                workspace_file_tool,
             )
 
             cls._modules_imported = True
