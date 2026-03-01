@@ -9,11 +9,13 @@ and configuration management.
 
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from .....web.models.mcp import MCPServer, UserMCPServer
+if TYPE_CHECKING:
+    pass
+
 from ....workspace import TaskWorkspace
 from .base import Tool
 from .config import BaseToolConfig
@@ -377,6 +379,7 @@ class ToolFactory:
             List of MCP tools
         """
         try:
+            from .....web.models.mcp import MCPServer, UserMCPServer
             from ...core.mcp.manager.db import DatabaseMCPServerManager
 
             # Load MCP server connections for the specific user
