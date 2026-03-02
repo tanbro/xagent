@@ -44,6 +44,7 @@ from ..management.collection_manager import (
 )
 from ..management.status import write_ingestion_status
 from ..parse.parse_document import parse_document
+from ..progress import ProgressManager, ProgressTracker
 from ..utils.model_resolver import resolve_embedding_adapter
 from ..vector_storage.vector_manager import (
     read_chunks_for_embedding,
@@ -74,6 +75,7 @@ def run_document_ingestion(
     source_path: str,
     *,
     ingestion_config: Optional[IngestionConfigInput] = None,
+    progress_manager: Optional[Any] = None,
     user_id: Optional[int] = None,
     is_admin: bool = False,
 ) -> IngestionResult:
@@ -88,6 +90,7 @@ def run_document_ingestion(
         source_path: Filesystem path to the document to ingest.
         ingestion_config: Optional configuration overrides or mapping supplied
             by external callers.
+        progress_manager: Optional progress manager for tracking.
         user_id: Optional user ID for ownership tracking.
         is_admin: Whether the user has admin privileges for accessing any documents.
 
@@ -96,7 +99,12 @@ def run_document_ingestion(
     """
     cfg = _coerce_ingestion_config(ingestion_config)
     return process_document(
-        collection, source_path, config=cfg, user_id=user_id, is_admin=is_admin
+        collection,
+        source_path,
+        config=cfg,
+        progress_manager=progress_manager,
+        user_id=user_id,
+        is_admin=is_admin,
     )
 
 
@@ -303,6 +311,7 @@ def process_document(
     source_path: str,
     *,
     config: Optional[IngestionConfig] = None,
+    progress_manager: Optional[ProgressManager] = None,
     user_id: Optional[int] = None,
     is_admin: bool = False,
 ) -> IngestionResult:
@@ -320,6 +329,7 @@ def process_document(
             disk.
         config: Optional ingestion configuration override. When provided, any
             unspecified fields fall back to system defaults.
+        progress_manager: Optional progress manager for tracking.
         user_id: Optional user ID for ownership tracking.
         is_admin: Whether the user has admin privileges.
 
@@ -342,6 +352,12 @@ def process_document(
           `result.warnings` to callers for better observability.
     """
     cfg = _coerce_ingestion_config(config)
+
+    # Initialize progress tracking
+    if progress_manager is None:
+        progress_manager = ProgressManager()
+    task_id = f"ingest_{collection}_{source_path.replace('/', '_').replace('.', '_')}"
+    progress_tracker = ProgressTracker(progress_manager, task_id)
 
     completed_steps: List[IngestionStepResult] = []
     warnings: List[str] = []
@@ -447,24 +463,35 @@ def process_document(
             extra={"collection": collection, "source_path": source_path},
         )
         register_start = time.time()
-        register_result = register_document(
-            collection=collection,
-            source_path=source_path,
-            user_id=user_id,
-        )
-        doc_id = register_result.get("doc_id")
-        if not doc_id:
-            raise DocumentValidationError(
-                "register_document did not return doc_id",
-                details={"collection": collection, "source_path": source_path},
+        with progress_tracker.track_step("register_document"):
+            register_result = register_document(
+                collection=collection,
+                source_path=source_path,
+                user_id=user_id,
             )
-        _record_ingestion_status(
-            collection,
-            doc_id,
-            status=DocumentProcessingStatus.RUNNING,
-            message="Document ingestion started.",
-            parse_hash=None,
+            doc_id = register_result.get("doc_id")
+            if not doc_id:
+                raise DocumentValidationError(
+                    "register_document did not return doc_id",
+                    details={"collection": collection, "source_path": source_path},
+                )
+            _record_ingestion_status(
+                collection,
+                doc_id,
+                status=DocumentProcessingStatus.RUNNING,
+                message="Document ingestion started.",
+                parse_hash=None,
+                user_id=user_id,
+            )
+        progress_manager.create_task(
+            task_type="ingestion",
+            task_id=task_id,
             user_id=user_id,
+            metadata={
+                "collection": collection,
+                "source_path": source_path,
+                "doc_id": doc_id,
+            },
         )
         register_elapsed = int((time.time() - register_start) * 1000)
         completed_steps.append(
@@ -527,14 +554,16 @@ def process_document(
             deepdoc_env["DEEPDOC_GPU_SESSIONS"] = str(cfg.deepdoc_gpu_sessions)
 
         with _temp_environ(deepdoc_env):
-            parse_response = parse_document(
-                collection=collection,
-                doc_id=doc_id,
-                parse_method=cfg.parse_method,
-                params=None,
-                user_id=user_id,
-                is_admin=is_admin,
-            )
+            with progress_tracker.track_step("parse_document") as parse_tracker:
+                parse_response = parse_document(
+                    collection=collection,
+                    doc_id=doc_id,
+                    parse_method=cfg.parse_method,
+                    params=None,
+                    user_id=user_id,
+                    is_admin=is_admin,
+                    progress_callback=parse_tracker,
+                )
         parse_model = (
             parse_response
             if isinstance(parse_response, ParseDocumentResponse)
@@ -573,6 +602,8 @@ def process_document(
         )
 
         # Step 3: Chunk document
+        with progress_tracker.track_step("chunk_document"):
+            pass  # Step marked
         current_step = "chunk_document"
         logger.info(
             "Step chunk_document started",
@@ -633,6 +664,8 @@ def process_document(
         )
 
         # Step 4: Read chunks for embedding
+        with progress_tracker.track_step("read_chunks_for_embedding"):
+            pass  # Step marked
         current_step = "read_chunks_for_embedding"
         logger.info(
             "Step read_chunks_for_embedding started",
@@ -712,6 +745,8 @@ def process_document(
         # Note: Some models (e.g., DashScope text-embedding-v4) do not support batch processing.
         # When embedding_use_async is True, we use async concurrent processing instead of batch API calls.
         # This wraps individual encode() calls with asyncio.to_thread for concurrent execution.
+        with progress_tracker.track_step("compute_embeddings"):
+            pass  # Step marked; sub-updates happen in loop
         current_step = "compute_embeddings"
         logger.info(
             "Step compute_embeddings started",
@@ -929,6 +964,8 @@ def process_document(
 
         vector_count = total_vector_count
         write_elapsed_ms = int(write_elapsed_total * 1000)
+        with progress_tracker.track_step("write_vectors_to_db"):
+            pass  # Step marked
         current_step = "write_vectors_to_db"
         completed_steps.append(
             IngestionStepResult(
@@ -993,6 +1030,7 @@ def process_document(
             parse_hash=parse_hash,
             user_id=user_id,
         )
+        progress_manager.complete_task(task_id, success=True)
         return IngestionResult(
             status="success",
             doc_id=doc_id,
@@ -1009,6 +1047,7 @@ def process_document(
     except RagCoreException as exc:
         logger.exception("Document ingestion pipeline failed: %s", exc)
         status = "partial" if completed_steps else "error"
+        progress_manager.complete_task(task_id, success=False)
         _record_ingestion_status(
             collection,
             doc_id,
@@ -1032,6 +1071,7 @@ def process_document(
     except Exception as exc:
         logger.exception("Document ingestion pipeline failed: %s", exc)
         status = "partial" if completed_steps else "error"
+        progress_manager.complete_task(task_id, success=False)
         _record_ingestion_status(
             collection,
             doc_id,

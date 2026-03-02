@@ -419,7 +419,9 @@ class DeepDocParser(
                 raise ValueError(f"DeepDoc does not support file type: {ext}")
         return self._parsers[ext]
 
-    async def _parse_impl(self, file_path: str | BytesIO, **kwargs: Any) -> ParseResult:
+    async def _parse_impl(
+        self, file_path: str | BytesIO, progress_callback: Any = None, **kwargs: Any
+    ) -> ParseResult:
         # Handle Excel/CSV file compatibility - convert to BytesIO if needed
         if isinstance(file_path, str):
             path_obj = Path(file_path)
@@ -515,8 +517,19 @@ class DeepDocParser(
                 if ext == ".pdf":
                     # Use standard DeepDoc parser
                     zoomin = parser_call_kwargs.get("zoomin", 3)
+
+                    # Set up progress callback for DeepDoc if provided
+                    callback = None
+                    if progress_callback is not None:
+                        from ...core.tools.core.RAG_tools.progress.adapters import (
+                            DeepDocProgressAdapter,
+                        )
+
+                        adapter = DeepDocProgressAdapter(progress_callback)
+                        callback = adapter.get_callback()
+
                     bboxes = parser.parse_into_bboxes(
-                        file_path, callback=None, zoomin=zoomin
+                        file_path, callback=callback, zoomin=zoomin
                     )
                     logger.info(
                         f"Parsed PDF into {len(bboxes)} unified elements with position information"
