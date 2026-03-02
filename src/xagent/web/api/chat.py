@@ -23,6 +23,7 @@ from ..models.task import AgentType, Task, TaskStatus
 from ..models.user import User
 from ..schemas.chat import TaskCreateRequest, TaskCreateResponse
 from ..services.llm_utils import resolve_llms_from_names
+from ..tools.config import WebToolConfig
 from ..user_isolated_memory import UserContext
 from ..utils.db_timezone import format_datetime_for_api, safe_timestamp_to_unix
 from .trace_handlers import DatabaseTraceHandler
@@ -542,21 +543,42 @@ class AgentServiceManager:
                             f"Task {task_id} is associated with published agent {current_agent.id} ({current_agent.name}), will exclude from agent tools"
                         )
 
-                # Filter tools by tool category using tool name to category mapping
+                # Filter tools by tool category using tool metadata
                 # Note: Tool names are stable, defined in code, no database storage needed
                 allowed_tools = None
                 if agent_config and agent_config.get("tool_categories"):
                     tool_categories = agent_config["tool_categories"]
 
-                    # Use ToolFactory as the single source of truth for tool category mapping
+                    # Get tools by filtering using ToolFactory
                     from ...core.tools.adapters.vibe.factory import ToolFactory
 
-                    TOOL_CATEGORY_MAP = ToolFactory.get_tool_category_map()
+                    # Create temporary config to get all tools
+                    temp_config = WebToolConfig(
+                        db=db,
+                        request=self.request,
+                        user_id=int(user.id),
+                        is_admin=bool(user.is_admin),
+                        workspace_config=None,
+                        include_mcp_tools=False,
+                        task_id=None,
+                        browser_tools_enabled=False,
+                        allowed_collections=agent_config.get("knowledge_bases"),
+                        allowed_skills=agent_config.get("skills"),
+                    )
 
+                    # Get all tools and filter by category
+                    all_tools = await ToolFactory.create_all_tools(temp_config)
                     allowed_tools = []
-                    for category in tool_categories:
-                        if category in TOOL_CATEGORY_MAP:
-                            allowed_tools.extend(TOOL_CATEGORY_MAP[category])
+
+                    for tool in all_tools:
+                        if hasattr(tool, "metadata") and hasattr(
+                            tool.metadata, "category"
+                        ):
+                            category = str(tool.metadata.category.value)
+                            if category in tool_categories:
+                                tool_name = getattr(tool, "name", None)
+                                if tool_name:
+                                    allowed_tools.append(tool_name)
 
                     logger.info(
                         f"🔧 Tool categories {tool_categories} mapped to {len(allowed_tools)} tools for task {task_id}"

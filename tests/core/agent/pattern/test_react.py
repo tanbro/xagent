@@ -396,8 +396,8 @@ async def test_react_failure_detection():
     tools = []  # No tools available
     pattern = ReActPattern(llm, max_iterations=3)
 
-    # With new retry logic, success: false in final_answer triggers retry
-    # After exhausting responses, default final answer is used
+    # With new behavior: success: false in final_answer returns failure directly
+    # No retry occurs, LLM's assessment is respected
     result = await pattern.run(
         task="Complete a task that will fail",
         memory=memory,
@@ -405,17 +405,16 @@ async def test_react_failure_detection():
         context=AgentContext(),
     )
 
-    # Should complete successfully after retry using default final answer
-    assert result["success"] is True
-    assert result["output"] == "Task completed successfully"
+    # Should return the failure result as provided by LLM
+    assert result["success"] is False
+    assert "unable to complete the task" in result["output"].lower()
 
 
 @pytest.mark.asyncio
 async def test_react_failure_detection_with_context():
-    """Test ReAct pattern with success:false followed by successful retry"""
-    # First call: returns success:false, which triggers exception and retry
-    # Retry: returns success:true, which completes successfully
-    # The mock LLM increments call_count each time chat() is called
+    """Test ReAct pattern with success:false returns failure directly"""
+    # LLM returns success:false, which should be returned as-is
+    # No retry occurs, LLM's assessment is respected
     responses = [
         '{"type": "final_answer", "reasoning": "Cannot proceed due to missing dependencies", "answer": "TASK FAILED: Missing required data from previous steps", "success": false, "error": "Missing required data from previous steps"}',
     ]
@@ -436,17 +435,17 @@ async def test_react_failure_detection_with_context():
         {"role": "user", "content": "Complete a task that will fail"},
     ]
 
-    # With new retry logic, first failure triggers retry
-    # After exhausting responses, default final answer is used
+    # With new behavior: failure is returned directly, no retry
     result = await pattern.run_with_context(
         messages=context_messages,
         tools=tools,
         max_iterations=3,
     )
 
-    # Should complete successfully after retry using default final answer
-    assert result["success"] is True
-    assert result["output"] == "Task completed successfully"
+    # Should return the failure result as provided by LLM
+    assert result["success"] is False
+    assert "TASK FAILED" in result["output"]
+    assert "Missing required data from previous steps" in result["output"]
 
 
 @pytest.mark.asyncio

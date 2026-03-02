@@ -725,6 +725,10 @@ class ReActPattern(AgentPattern):
                 if result["type"] == "final_answer":
                     logger.info(f"Action ReAct completed in {iteration + 1} iterations")
 
+                    # Get the success status from the result
+                    # This may be False if LLM indicated task failure
+                    success_status = result.get("success", True)
+
                     # Generate comprehensive insights and store memories
                     await self._generate_and_store_react_memories(
                         f"{task_description} (iteration {iteration + 1})",
@@ -749,7 +753,7 @@ class ReActPattern(AgentPattern):
                             self.tracer,
                             task_id,
                             result=result["content"],
-                            success=True,
+                            success=success_status,
                         )
 
                         # Trace task end (REACT specific)
@@ -757,11 +761,14 @@ class ReActPattern(AgentPattern):
                             self.tracer,
                             task_id,
                             TraceCategory.REACT,
-                            data={"result": result["content"], "success": True},
+                            data={
+                                "result": result["content"],
+                                "success": success_status,
+                            },
                         )
 
                     return {
-                        "success": True,
+                        "success": success_status,
                         "output": result["content"],
                         "iterations": iteration + 1,
                         "execution_history": messages,
@@ -1730,15 +1737,16 @@ Failed final answer:
                     }
                 )
 
-                # Raise an exception to indicate task failure
-                raise PatternExecutionError(
-                    pattern_name="ReAct",
-                    message=f"Task failed: {error_message}",
-                    context={
-                        "failure_reason": error_message,
-                        "failed_action": action.model_dump(),
-                    },
-                )
+                # Return failure result directly - LLM has decided the task cannot be completed
+                # This is consistent with LangChain's AgentFinish design: once LLM returns a final answer,
+                # the agent loop stops regardless of success/failure status
+                return {
+                    "type": "final_answer",
+                    "content": action.answer,
+                    "reasoning": action.reasoning,
+                    "success": False,
+                    "error": error_message,
+                }
 
             # Add action to conversation history
             messages.append(
