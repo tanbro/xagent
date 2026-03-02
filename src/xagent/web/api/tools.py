@@ -15,6 +15,20 @@ from ..tools.config import WebToolConfig
 
 logger = logging.getLogger(__name__)
 
+# Category display names (for frontend display)
+CATEGORY_DISPLAY_NAMES = {
+    "vision": "Vision",
+    "image": "Image",
+    "knowledge": "Knowledge",
+    "file": "File",
+    "basic": "Basic",
+    "browser": "Browser",
+    "ppt": "PPT",
+    "agent": "Agent",
+    "mcp": "MCP",
+    "other": "Other",
+}
+
 # 创建路由器
 tools_router = APIRouter(prefix="/api/tools", tags=["tools"])
 
@@ -86,6 +100,7 @@ def _create_tool_info(
         "description": getattr(tool, "description", ""),
         "type": tool_type,
         "category": category,
+        "display_category": CATEGORY_DISPLAY_NAMES.get(category, category.capitalize()),
         "enabled": enabled,
         "status": status,
         "status_reason": status_reason,
@@ -99,7 +114,11 @@ async def get_available_tools(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get list of all available tools, including MCP tools"""
+    """Get list of all available tools, including MCP tools.
+
+    Tools are self-describing - each tool declares its own category via
+    metadata.category field. No manual category mapping needed.
+    """
 
     # Create a temporary request object (simulating WebToolConfig requirements)
     class MockRequest:
@@ -114,10 +133,10 @@ async def get_available_tools(
         is_admin=bool(current_user.is_admin),
         workspace_config={
             "base_dir": "./uploads",
-            "task_id": None,  # No task ID for listing available tools
+            "task_id": "tools_list",  # Use a generic task ID for workspace creation
         },
         include_mcp_tools=True,  # Enable MCP tools
-        task_id=None,  # No task ID needed for tool listing
+        task_id="tools_list",  # Generic task ID for tool listing
         browser_tools_enabled=True,  # Enable browser automation tools
     )
 
@@ -127,46 +146,13 @@ async def get_available_tools(
 
     all_tools = await ToolFactory.create_all_tools(tool_config)
 
-    # Get category map for category lookup
-    category_map = ToolFactory.get_tool_category_map()
-
-    # Build reverse mapping: tool_name -> category
-    tool_name_to_category: Dict[str, str] = {}
-    for category, tool_names in category_map.items():
-        for tool_name in tool_names:
-            tool_name_to_category[tool_name] = category
-
-    # Helper function to get category from tool
+    # Helper function to get category from tool's metadata
     def get_tool_category(tool: Any) -> str:
-        """Get category for a tool using multiple strategies."""
-        tool_name = tool.name if hasattr(tool, "name") else str(tool)
+        """Get category from tool's self-describing metadata.
 
-        # Strategy 1: Look up in category map
-        if tool_name in tool_name_to_category:
-            return tool_name_to_category[tool_name]
-
-        # Strategy 2: Use tags to infer category
-        if hasattr(tool, "tags"):
-            tags = tool.tags
-            if "browser" in tags:
-                return "browser"
-            if "pptx" in tags:
-                return "ppt"
-            if "knowledge" in tags:
-                return "knowledge"
-            if "mcp" in tags:
-                return "mcp"
-            if "agent" in tags:
-                return "agent"
-
-        # Strategy 3: Check tag[0] for common categories
-        if hasattr(tool, "tags") and tool.tags:
-            first_tag: str = tool.tags[0]
-            if first_tag in ["vision", "image", "file", "basic"]:
-                return first_tag
-
-        # Default fallback
-        return "other"
+        Tools declare their category via the category class attribute.
+        """
+        return str(tool.metadata.category.value)
 
     # Convert tools to API format with category information
     tools: List[Dict[str, Any]] = []

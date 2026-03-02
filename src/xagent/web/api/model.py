@@ -13,6 +13,7 @@ from xagent.core.model.model import (
     ImageModelConfig,
     ModelConfig,
 )
+from xagent.core.utils.security import redact_sensitive_text
 
 from ..auth_dependencies import get_current_user
 from ..models.database import get_db
@@ -470,13 +471,14 @@ async def update_model(
                 status_code=403, detail="Only administrators can enable global sharing"
             )
 
-        # Update sharing status for all user models
-        db.query(UserModel).filter(UserModel.model_id == db_model.id).update(
-            {"is_shared": model_update.share_with_users}
-        )
-
-        # If sharing is enabled, create relationships for users who don't have access
+        # Update sharing status
         if model_update.share_with_users:
+            # Enable sharing: update all existing records to shared=True
+            db.query(UserModel).filter(UserModel.model_id == db_model.id).update(
+                {"is_shared": True}
+            )
+
+            # Create relationships for users who don't have access
             existing_user_ids = [
                 um.user_id
                 for um in db.query(UserModel)
@@ -495,6 +497,17 @@ async def update_model(
                     is_shared=True,
                 )
                 db.add(shared_user_model)
+        else:
+            # Disable sharing:
+            # 1. Update owner's record to shared=False
+            db.query(UserModel).filter(
+                UserModel.model_id == db_model.id, UserModel.is_owner.is_(True)
+            ).update({"is_shared": False})
+
+            # 2. Delete all non-owner records (revoke access)
+            db.query(UserModel).filter(
+                UserModel.model_id == db_model.id, UserModel.is_owner.is_(False)
+            ).delete()
 
     # Update model configuration in-place
     update_data = model_update.model_dump(exclude_unset=True)
@@ -653,14 +666,19 @@ async def test_models(
 
         except Exception as e:
             response_time = time.time() - start_time
-            logger.error(f"Error testing model {model.model_id}: {e}")
+            safe_error = redact_sensitive_text(str(e))
+            logger.error(
+                "Error testing model %s: %s",
+                model.model_id,
+                safe_error,
+            )
             test_results.append(
                 ModelTestResponse(
                     model_id=model.model_id,
                     status="failed",
                     response_time=response_time,
                     message="Model test failed",
-                    error=str(e),
+                    error=safe_error,
                 )
             )
 
@@ -1436,10 +1454,15 @@ async def fetch_provider_models(
             "count": len(models),
         }
     except Exception as e:
-        logger.error(f"Error fetching models from {provider}: {e}")
+        safe_error = redact_sensitive_text(str(e))
+        logger.error(
+            "Error fetching models from %s: %s",
+            provider,
+            safe_error,
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch models from {provider}: {str(e)}",
+            detail=f"Failed to fetch models from {provider}: {safe_error}",
         )
 
 
@@ -1507,9 +1530,14 @@ async def fetch_multiple_providers_models(
                 "count": len(models),
             }
         except Exception as e:
-            logger.error(f"Error fetching from {provider}: {e}")
+            safe_error = redact_sensitive_text(str(e))
+            logger.error(
+                "Error fetching from %s: %s",
+                provider,
+                safe_error,
+            )
             results[provider] = {
-                "error": str(e),
+                "error": safe_error,
                 "models": [],
             }
 
