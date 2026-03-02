@@ -94,6 +94,8 @@ def _create_tool_info(
         tool_type = "browser"
     elif category == "agent":
         tool_type = "agent"
+    elif category == "skill":
+        tool_type = "skill"
 
     return {
         "name": tool_name,
@@ -126,6 +128,7 @@ async def get_available_tools(
             self.credentials: Optional[Any] = None
 
     # Create WebToolConfig, now includes MCP tools
+    # Use a default task_id for workspace creation (required for file tools)
     tool_config = WebToolConfig(
         db=db,
         request=MockRequest(),

@@ -499,6 +499,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       'ppt': t('builds.configForm.tools.categories.ppt'),
       'office': t('builds.configForm.tools.categories.office'),
       'special_image': t('builds.configForm.tools.categories.specialImage'),
+      'skill': t('builds.configForm.tools.categories.skill'),
       'database': t('builds.configForm.tools.categories.database'),
     }
     return labels[category] || category

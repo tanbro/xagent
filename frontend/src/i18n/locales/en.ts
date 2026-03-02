@@ -1641,6 +1641,7 @@ Build when you need.`
           ppt: "PowerPoint",
           office: "Office Tools",
           specialImage: "Image Tools",
+          skill: "Skill",
           database: "Database",
         },
       },
