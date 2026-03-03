@@ -6,11 +6,15 @@ Wraps the core SQL tool for framework integration.
 
 import logging
 from textwrap import dedent, indent
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ....workspace import TaskWorkspace
 from ...core.sql_tool import execute_sql_query
+from .factory import ToolFactory, register_tool
 from .function import FunctionTool
+
+if TYPE_CHECKING:
+    from .config import BaseToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -91,4 +95,22 @@ def get_sql_tool(info: Optional[dict[str, Any]] = None) -> list[FunctionTool]:
         )
 
     tool_instance = SqlQueryTool(workspace=workspace)
+    return tool_instance.get_tools()
+
+
+@register_tool
+async def create_sql_tools(config: "BaseToolConfig") -> list:
+    """
+    Create SQL query tools with workspace support.
+
+    Registered via @register_tool decorator for auto-discovery.
+
+    Args:
+        config: Tool configuration with workspace settings
+
+    Returns:
+        List of tool instances
+    """
+    workspace = ToolFactory._create_workspace(config.get_workspace_config())
+    tool_instance = SqlQueryTool(workspace)
     return tool_instance.get_tools()

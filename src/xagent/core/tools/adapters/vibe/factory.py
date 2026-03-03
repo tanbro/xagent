@@ -68,6 +68,7 @@ class ToolRegistry:
                 mcp_tools,
                 pptx_tool,
                 special_image_tools,
+                sql_tool,
                 vision_tool,
                 workspace_file_tool,
             )
