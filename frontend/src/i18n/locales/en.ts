@@ -730,6 +730,9 @@ Build when you need.`
     item: {
       keywordPrefix: "Keyword",
       tagPrefix: "Tag",
+      addedManually: "Added manually",
+      keywordsLabel: "Keywords:",
+      tagsLabel: "Tags:",
     },
     list: {
       empty: "No memories found",
@@ -1250,7 +1253,8 @@ Build when you need.`
       webIngestFailed: "Website import failed",
       deleteFailed: "Failed to delete knowledge base: {name}",
       deleteFailedGeneric: "Failed to delete knowledge base",
-      unsupportedFileType: "Unsupported file type",
+      unsupportedFileType: "Some file formats are not supported and have been skipped",
+      failedAtStep: "Failed at step: {step}",
     },
     actions: {
       deleteConfirm: "Are you sure you want to delete knowledge base {name}? This action cannot be undone.",
@@ -1545,6 +1549,7 @@ Build when you need.`
       header: {
         title: "Custom Agent",
         subtitle: "Configure your AI agent's behavior and capabilities.",
+        backToList: "Back to list",
         create: "Create",
         update: "Update",
         publish: "Publish",
@@ -1554,14 +1559,19 @@ Build when you need.`
       },
       validation: {
         nameRequired: "Agent name is required",
+        instructionsRequired: "Agent instructions are required",
         modelRequired: "Please select a general model",
       },
       success: {
         created: "Agent created successfully",
         createdDesc: "Your '{name}' has been created successfully",
+        published: "Agent published successfully",
+        unpublished: "Agent unpublished successfully",
       },
       error: {
         failed: "Failed to create agent",
+        publishFailed: "Failed to publish agent",
+        unpublishFailed: "Failed to unpublish agent",
         unknown: "An unknown error occurred",
       }
     },
@@ -1582,6 +1592,10 @@ Build when you need.`
       instructions: {
         label: "Instructions",
         placeholder: "System instructions for the agent...",
+        optimize: "Optimize Instructions",
+        optimizing: "Optimizing...",
+        optimizeError: "Failed to optimize instructions",
+        optimizeSuccess: "Instructions optimized successfully",
       },
       executionMode: {
         label: "Execution Mode",
@@ -1600,16 +1614,16 @@ Build when you need.`
         configureDescription: "Configure other specialized model parameters.",
         noData: "No models available",
         types: {
-          general: "General Model",
-          smallFast: "Small & Fast",
-          visual: "Visual Model",
-          compact: "Compact Model",
+          general: "Main Model",
+          smallFast: "Fast Model",
+          visual: "Vision Model",
+          compact: "Long Context Model",
         },
         tips: {
-          general: "General purpose LLM suitable for most tasks, balancing performance and cost.",
-          smallFast: "Fast response and lower cost, suitable for simple tasks or low latency scenarios.",
-          visual: "Capable of image recognition and processing, suitable for image-related tasks.",
-          compact: "Lightweight model suitable for resource-constrained or high-immediacy scenarios.",
+          general: "Primary model for all task execution",
+          smallFast: "For simple operations",
+          visual: "For conversation history compression",
+          compact: "For image understanding",
         },
       },
       knowledgeBase: {
@@ -1659,12 +1673,18 @@ Build when you need.`
     },
     preview: {
       title: "Preview",
+      live: "Live Preview",
+      synced: "Config Synced",
       initialMessage: "Hello! I am the preview of your agent. You can test your configuration here.",
       chat: {
         placeholder: "Chat with your agent...",
         send: "Send",
         you: "You",
         agent: "Test Agent",
+      },
+      status: {
+        connected: "Connected",
+        disconnected: "Disconnected",
       },
       errors: {
         noModel: "Please select a general model first",

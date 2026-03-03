@@ -8,7 +8,7 @@ All models use Pydantic v2 ConfigDict for future compatibility.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,9 +74,69 @@ class DocumentProcessingStatus(str, Enum):
     PARTIALLY_EMBEDDED = "partially_embedded"  # Document has some embeddings but not all chunks are embedded
     SUCCESS = "success"  # Document fully processed: all chunks have embeddings
     FAILED = "failed"
+    CANCELLED = "cancelled"  # Task was cancelled by user or system
 
     def __str__(self) -> str:
         return self.value
+
+
+class TaskProgress(BaseModel):
+    """Progress state for a single RAG task (ingestion, retrieval, etc.)."""
+
+    task_id: str = Field(..., description="Unique task identifier")
+    user_id: Optional[int] = Field(default=None, description="User ID for isolation")
+    task_type: str = Field(..., description="Type of task (e.g. ingestion, retrieval)")
+    status: DocumentProcessingStatus = Field(
+        default=DocumentProcessingStatus.PENDING,
+        description="Current task status",
+    )
+    current_step: Optional[str] = Field(
+        default=None,
+        description="Human-readable current step",
+    )
+    overall_progress: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Progress in [0, 1]",
+    )
+    start_time: Optional[float] = Field(
+        default=None, description="Unix timestamp when started"
+    )
+    end_time: Optional[float] = Field(
+        default=None, description="Unix timestamp when ended"
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra task metadata",
+    )
+
+
+class ProgressUpdateEvent(BaseModel):
+    """Event payload for real-time progress WebSocket broadcasts."""
+
+    task_id: str = Field(..., description="Task identifier")
+    task_type: str = Field(..., description="Task type")
+    status: DocumentProcessingStatus = Field(
+        ...,
+        description="Current status",
+    )
+    current_step: Optional[str] = Field(default=None, description="Current step label")
+    overall_progress: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Progress in [0, 1]",
+    )
+    timestamp: float = Field(..., description="Event time (Unix timestamp)")
+    data: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra event data (e.g. start_time, end_time, metadata)",
+    )
+    event_type: str = Field(
+        default="progress",
+        description="Event kind (e.g. progress, custom)",
+    )
 
 
 class IndexType(Enum):
@@ -278,6 +338,68 @@ class ParseDocumentResponse(BaseModel):
     )
     written: bool = Field(
         ..., description="True if parse record was written to database"
+    )
+
+
+# ------------------------- Parse Result Display schemas -------------------------
+
+
+class ParsedTextSegmentDisplay(BaseModel):
+    """Display model for a parsed text segment."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["text"] = "text"
+    text: str = Field(..., description="The text content of the segment")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Metadata including positions, style, etc."
+    )
+
+
+class ParsedTableDisplay(BaseModel):
+    """Display model for a parsed table."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["table"] = "table"
+    html: Optional[str] = Field(None, description="HTML representation of the table")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Metadata including positions, caption, etc."
+    )
+
+
+class ParsedFigureDisplay(BaseModel):
+    """Display model for a parsed figure."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["figure"] = "figure"
+    text: str = Field(..., description="Caption or text associated with the figure")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata including positions, image_path, etc.",
+    )
+
+
+ParsedElementDisplay = Annotated[
+    Union[ParsedTextSegmentDisplay, ParsedTableDisplay, ParsedFigureDisplay],
+    Field(discriminator="type"),
+]
+
+
+class ParseResultResponse(BaseModel):
+    """Response model for displaying parse results with pagination."""
+
+    model_config = ConfigDict(frozen=True)
+
+    doc_id: str = Field(..., description="The document ID")
+    parse_hash: str = Field(..., description="SHA256 hash of parse configuration")
+    elements: List[ParsedElementDisplay] = Field(
+        default_factory=list, description="Ordered list of parsed elements"
+    )
+    pagination: Dict[str, Any] = Field(
+        ...,
+        description="Pagination information including page, page_size, total counts",
     )
 
 
@@ -924,6 +1046,32 @@ class IngestionConfig(BaseModel):
     )
     separators: Optional[List[str]] = Field(
         default=None, description="Custom separators for recursive/markdown strategies"
+    )
+    use_token_count: bool = Field(
+        default=False,
+        description="If True, chunk_size and chunk_overlap are in tokens (tiktoken); only applies to RECURSIVE strategy",
+    )
+    tiktoken_encoding: str = Field(
+        default="cl100k_base",
+        description="tiktoken encoding name when use_token_count=True (e.g. cl100k_base for GPT-4/3.5). Should align with config.DEFAULT_TIKTOKEN_ENCODING.",
+    )
+    enable_protected_content: bool = Field(
+        default=True,
+        description="If True, do not split inside code blocks, formulas, tables (P1).",
+    )
+    protected_patterns: Optional[List[str]] = Field(
+        default=None,
+        description="Optional regex patterns for protected regions; None uses config default.",
+    )
+    table_context_size: int = Field(
+        default=0,
+        ge=0,
+        description="Chars from prev/next chunk to attach to table chunks; 0 = off (P2).",
+    )
+    image_context_size: int = Field(
+        default=0,
+        ge=0,
+        description="Chars from prev/next chunk to attach to image chunks; 0 = off (P2).",
     )
     embedding_model_id: Optional[str] = Field(
         default=None,

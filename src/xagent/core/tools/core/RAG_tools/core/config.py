@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Final, Mapping, Sequence
 
 from .schemas import IndexMetric
+
+# ------------------------- Paths -------------------------
+
+DATA_DIR: Final[Path] = Path("data")
+"""Base data directory (relative to CWD)."""
+
+ARTIFACTS_DIR: Final[Path] = DATA_DIR / "artifacts"
+"""Base artifacts directory."""
+
+# ------------------------- Defaults -------------------------
 
 DEFAULT_INDEX_ROW_THRESHOLD: Final[int] = 50_000
 """Row count threshold to consider building ANN index on embeddings tables."""
@@ -47,6 +58,24 @@ PARSE_PARAM_WHITELIST: Final[Sequence[str]] = (
     "ocr_enabled",
 )
 
+# Default tiktoken encoding for chunk token counting (OpenAI cl100k_base: GPT-4, GPT-3.5-turbo)
+DEFAULT_TIKTOKEN_ENCODING: Final[str] = "cl100k_base"
+
+# P1: Default regex patterns for protected content (not split inside these)
+# Order matters: longer/more specific patterns can be listed first
+DEFAULT_PROTECTED_PATTERNS: Final[Sequence[str]] = (
+    r"```[\s\S]*?```",  # Markdown fenced code block
+    r"\$\$[\s\S]*?\$\$",  # LaTeX display math
+    r"\$[^$\n]+\$",  # LaTeX inline math (single line)
+    r"!\[.*?\]\(.*?\)",  # Markdown image
+    r"\[.*?\]\(.*?\)",  # Markdown link
+    r"(?:^|\n)[ \]*(?:\|[^|\n]*)+\|[\r\n]+",  # Markdown table row (simplified)
+)
+
+# P2: Default context size (chars) to attach before/after table or image chunks; 0 = disabled
+DEFAULT_TABLE_CONTEXT_SIZE: Final[int] = 0
+DEFAULT_IMAGE_CONTEXT_SIZE: Final[int] = 0
+
 # Parameters that affect chunk hash
 CHUNK_PARAM_WHITELIST: Final[Sequence[str]] = (
     "chunk_strategy",
@@ -54,6 +83,12 @@ CHUNK_PARAM_WHITELIST: Final[Sequence[str]] = (
     "chunk_overlap",
     "headers_to_split_on",
     "separators",
+    "use_token_count",
+    "tiktoken_encoding",
+    "enable_protected_content",
+    "protected_patterns",
+    "table_context_size",
+    "image_context_size",
 )
 
 # Common model synonyms to canonical names (vendor/name or simple name)

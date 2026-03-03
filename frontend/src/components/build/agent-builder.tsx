@@ -11,7 +11,7 @@ import { ChatInput } from "@/components/chat/ChatInput"
 import { ChatMessage } from "@/components/chat/ChatMessage"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl, getWsUrl } from "@/lib/utils"
-import { PlusCircle, MessageSquare, Upload, Download, Info, Settings2 } from "lucide-react"
+import { PlusCircle, MessageSquare, Upload, Download, Info, Settings2, Check, Zap, BookOpen, ChevronLeft, Sparkles, Loader2 } from "lucide-react"
 import { useI18n } from "@/contexts/i18n-context"
 import { useAuth } from "@/contexts/auth-context"
 import { FileAttachment } from "@/components/file-attachment"
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog"
 import { useRouter, useSearchParams } from "next/navigation"
 import { KnowledgeBaseCreationDialog } from "@/components/kb/knowledge-base-creation-dialog"
+import { toast } from "sonner"
 
 interface KnowledgeBase {
   name: string
@@ -120,11 +121,23 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)  // Existing logo URL
   const [isCreating, setIsCreating] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isOptimizing, setIsOptimizing] = useState(false)
   const [loadingAgent, setLoadingAgent] = useState(false)
   const [originalData, setOriginalData] = useState<any>(null)
   const [isKbModalOpen, setIsKbModalOpen] = useState(false)
   const [isModelConfigOpen, setIsModelConfigOpen] = useState(false)
+  const [configSynced, setConfigSynced] = useState(false)
+  const isFirstRender = useRef(true)
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    setConfigSynced(true)
+    const timer = setTimeout(() => setConfigSynced(false), 2000)
+    return () => clearTimeout(timer)
+  }, [name, description, instructions, executionMode, suggestedPrompts, selectedKbs, selectedSkills, selectedToolCategories, modelConfig])
 
   // Create Success Dialog State
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
@@ -685,17 +698,19 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
   }, [name, description, instructions, executionMode, logoFile, suggestedPrompts, selectedKbs, selectedSkills, selectedToolCategories, modelConfig, originalData])
 
   const handleCreate = async () => {
-    // Clear previous error
-    setErrorMessage(null)
-
     // Validation
     if (!name.trim()) {
-      setErrorMessage(t("builds.editor.validation.nameRequired"))
+      toast.error(t("builds.editor.validation.nameRequired"))
+      return
+    }
+
+    if (!instructions.trim()) {
+      toast.error(t("builds.editor.validation.instructionsRequired"))
       return
     }
 
     if (!modelConfig.general) {
-      setErrorMessage(t("builds.editor.validation.modelRequired"))
+      toast.error(t("builds.editor.validation.modelRequired"))
       return
     }
 
@@ -778,11 +793,11 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
         }
       } else {
         const error = await response.json()
-        setErrorMessage(error.detail || t("builds.editor.error.unknown"))
+        toast.error(error.detail || t("builds.editor.error.unknown"))
       }
     } catch (error) {
       console.error("Failed to save agent:", error)
-      setErrorMessage(t("builds.editor.error.unknown"))
+      toast.error(t("builds.editor.error.unknown"))
     } finally {
       setIsCreating(false)
     }
@@ -792,7 +807,6 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
     if (!agentId) return
 
     setLoadingAgent(true)
-    setErrorMessage(null)
 
     try {
       const response = await apiRequest(`${getApiUrl()}/api/agents/${agentId}/publish`, {
@@ -800,20 +814,18 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       })
 
       if (response.ok) {
-        // Optional: show success message
-        // Update local state to reflect published status
         setOriginalData({
           ...originalData,
-          status: "published"
+          status: "published",
         })
-        router.push("/build")
+        toast.success(t("builds.editor.success.published"))
       } else {
         const error = await response.json()
-        setErrorMessage(error.detail || "Failed to publish agent")
+        toast.error(error.detail || t("builds.editor.error.publishFailed"))
       }
     } catch (error) {
       console.error("Failed to publish agent:", error)
-      setErrorMessage(t("builds.editor.error.unknown"))
+      toast.error(t("builds.editor.error.unknown"))
     } finally {
       setLoadingAgent(false)
     }
@@ -823,7 +835,6 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
     if (!agentId) return
 
     setLoadingAgent(true)
-    setErrorMessage(null)
 
     try {
       const response = await apiRequest(`${getApiUrl()}/api/agents/${agentId}/unpublish`, {
@@ -831,19 +842,18 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       })
 
       if (response.ok) {
-        // Update local state to reflect unpublished status
         setOriginalData({
           ...originalData,
-          status: "draft"
+          status: "draft",
         })
-        router.push("/build")
+        toast.success(t("builds.editor.success.unpublished"))
       } else {
         const error = await response.json()
-        setErrorMessage(error.detail || "Failed to unpublish agent")
+        toast.error(error.detail || t("builds.editor.error.unpublishFailed"))
       }
     } catch (error) {
       console.error("Failed to unpublish agent:", error)
-      setErrorMessage(t("builds.editor.error.unknown"))
+      toast.error(t("builds.editor.error.unknown"))
     } finally {
       setLoadingAgent(false)
     }
@@ -859,17 +869,16 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       })
 
       if (response.ok) {
+        toast.success(t("builds.editor.success.published"))
         setShowSuccessDialog(false)
-        router.push("/build")
+        router.replace(`/build/${createdAgent.id}`)
       } else {
         const error = await response.json()
-        // Show error in dialog? or main error message
-        // For now, let's just close and show main error if possible, or alert
-        alert(error.detail || "Failed to publish agent")
+        toast.error(error.detail || t("builds.editor.error.publishFailed"))
       }
     } catch (error) {
       console.error("Failed to publish agent:", error)
-      alert("Failed to publish agent")
+      toast.error(t("builds.editor.error.unknown"))
     } finally {
       setLoadingAgent(false)
     }
@@ -877,8 +886,42 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
   const handleDialogClose = () => {
     setShowSuccessDialog(false)
-    // Refresh to enter full edit mode with proper context
-    window.location.reload()
+    if (createdAgent?.id) {
+      router.replace(`/build/${createdAgent.id}`)
+    }
+  }
+
+  const handleOptimizeInstructions = async () => {
+    if (!instructions.trim()) {
+      toast.error(t("builds.editor.validation.instructionsRequired"))
+      return
+    }
+
+    setIsOptimizing(true)
+    try {
+      const response = await apiRequest(`${getApiUrl()}/api/agents/optimize-instructions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instructions,
+          model_id: modelConfig.general
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setInstructions(data.optimized_instructions)
+        toast.success(t("builds.configForm.instructions.optimizeSuccess"))
+      } else {
+        const error = await response.json()
+        toast.error(error.detail || t("builds.configForm.instructions.optimizeError"))
+      }
+    } catch (error) {
+      console.error("Failed to optimize instructions:", error)
+      toast.error(t("builds.configForm.instructions.optimizeError"))
+    } finally {
+      setIsOptimizing(false)
+    }
   }
 
   const LeftPanel = (
@@ -912,7 +955,9 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
         {/* Name */}
         <div className="space-y-2">
-          <Label htmlFor="name">{t("builds.configForm.name.label")}</Label>
+          <Label htmlFor="name">
+            {t("builds.configForm.name.label")} <span className="text-destructive">*</span>
+          </Label>
           <Input
             id="name"
             placeholder={t("builds.configForm.name.placeholder")}
@@ -934,13 +979,32 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
         {/* Instructions */}
         <div className="space-y-2">
-          <Label htmlFor="instructions">{t("builds.configForm.instructions.label")}</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="instructions">
+              {t("builds.configForm.instructions.label")} <span className="text-destructive">*</span>
+            </Label>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs text-muted-foreground hover:text-primary"
+              onClick={handleOptimizeInstructions}
+              disabled={isOptimizing || !instructions.trim()}
+            >
+              {isOptimizing ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {isOptimizing ? t("builds.configForm.instructions.optimizing") : t("builds.configForm.instructions.optimize")}
+            </Button>
+          </div>
           <Textarea
             id="instructions"
             placeholder={t("builds.configForm.instructions.placeholder")}
             className="min-h-[150px] font-mono text-sm"
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
+            disabled={isOptimizing}
           />
         </div>
 
@@ -1029,8 +1093,17 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{t("builds.configForm.model.configure")}</DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="flex items-center gap-1.5">
                   {t("builds.configForm.model.configureDescription")}
+                  <a
+                    href="https://docs.xagent.run/models/overview"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-muted-foreground hover:text-primary transition-colors"
+                    title="View Documentation"
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                  </a>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -1250,13 +1323,21 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       <div className="h-14 border-b flex items-center px-4 gap-2 bg-card/30">
         <MessageSquare className="h-5 w-5 text-muted-foreground" />
         <span className="font-medium">{t("builds.preview.title")}</span>
+        <div className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 transition-all duration-300 ${
+          configSynced
+            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+            : "bg-muted text-muted-foreground"
+        }`}>
+          {configSynced ? <Check className="h-3 w-3" /> : <Zap className="h-3 w-3" />}
+          <span>{configSynced ? t("builds.preview.synced") : t("builds.preview.live")}</span>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <div
             className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}
-            title={wsConnected ? 'Connected' : 'Disconnected'}
+            title={wsConnected ? t("builds.preview.status.connected") : t("builds.preview.status.disconnected")}
           />
           <span className="text-xs text-muted-foreground">
-            {wsConnected ? 'Connected' : 'Disconnected'}
+            {wsConnected ? t("builds.preview.status.connected") : t("builds.preview.status.disconnected")}
           </span>
         </div>
       </div>
@@ -1299,21 +1380,37 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       {/* Header */}
       <div className="border-b flex justify-between items-center p-8">
         <div>
+          {isEditMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-1 mb-2 text-muted-foreground hover:text-foreground"
+              onClick={() => router.push("/build")}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              {t("builds.editor.header.backToList")}
+            </Button>
+          )}
           <h1 className="text-3xl font-bold mb-1">{t("builds.editor.header.title")}</h1>
           <p className="text-muted-foreground">{t("builds.editor.header.subtitle")}</p>
         </div>
         <div className="flex items-center gap-4">
-          {errorMessage && (
-            <div className="text-sm text-destructive">{errorMessage}</div>
+          {isEditMode && !isDirty && originalData?.status === "published" ? (
+            <>
+              <Button variant="outline" onClick={handleUnpublish} disabled={isCreating || loadingAgent}>
+                {t("builds.editor.header.unpublish")}
+              </Button>
+            </>
+          ) : (
+            <Button onClick={isEditMode && !isDirty ? handlePublish : handleCreate} disabled={isCreating || loadingAgent}>
+              {isCreating
+                ? (isEditMode ? t("builds.editor.header.updating") : t("builds.editor.header.creating"))
+                : isEditMode
+                ? (isDirty ? t("builds.editor.header.update") : t("builds.editor.header.publish"))
+                : t("builds.editor.header.create")
+              }
+            </Button>
           )}
-          <Button onClick={isEditMode && !isDirty ? (originalData?.status === "published" ? handleUnpublish : handlePublish) : handleCreate} disabled={isCreating || loadingAgent}>
-            {isCreating
-              ? (isEditMode ? t("builds.editor.header.updating") : t("builds.editor.header.creating"))
-              : isEditMode
-              ? (isDirty ? t("builds.editor.header.update") : (originalData?.status === "published" ? t("builds.editor.header.unpublish") : t("builds.editor.header.publish")))
-              : t("builds.editor.header.create")
-            }
-          </Button>
         </div>
       </div>
 
@@ -1386,13 +1483,15 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
               {t("builds.editor.success.createdDesc", { name: createdAgent?.name })}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={handleDialogClose}>
-              {t("common.cancel") || "Close"}
-            </Button>
-            <Button onClick={handleDialogPublish}>
-              {t("builds.editor.header.publish")}
-            </Button>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <div className="flex w-full sm:w-auto gap-2 justify-end">
+              <Button variant="outline" onClick={handleDialogClose}>
+                {t("common.cancel")}
+              </Button>
+              <Button onClick={handleDialogPublish}>
+                {t("builds.editor.header.publish")}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

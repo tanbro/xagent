@@ -730,6 +730,9 @@ Build when you need.`
     item: {
       keywordPrefix: "关键词",
       tagPrefix: "标签",
+      addedManually: "手动添加",
+      keywordsLabel: "关键词：",
+      tagsLabel: "标签：",
     },
     list: {
       empty: "暂无记忆项",
@@ -1250,7 +1253,8 @@ Build when you need.`
       webIngestFailed: "网站导入失败",
       deleteFailed: "删除知识库失败: {name}",
       deleteFailedGeneric: "删除知识库失败",
-      unsupportedFileType: "不支持的文件类型",
+      unsupportedFileType: "部分文件格式不支持，已跳过",
+      failedAtStep: "失败步骤: {step}",
     },
     actions: {
       deleteConfirm: "确定要删除知识库 {name} 吗？此操作无法撤销。",
@@ -1545,6 +1549,7 @@ Build when you need.`
       header: {
         title: "自定义 Agent",
         subtitle: "配置你的 AI Agent 的行为和能力。",
+        backToList: "返回列表",
         create: "创建",
         update: "更新",
         publish: "发布",
@@ -1554,14 +1559,19 @@ Build when you need.`
       },
       validation: {
         nameRequired: "Agent 名称不能为空",
+        instructionsRequired: "Agent 指令不能为空",
         modelRequired: "请选择通用模型",
       },
       success: {
         created: "创建成功",
         createdDesc: "你的 '{name}' 已成功创建",
+        published: "发布成功",
+        unpublished: "已取消发布",
       },
       error: {
         failed: "创建 Agent 失败",
+        publishFailed: "发布 Agent 失败",
+        unpublishFailed: "取消发布 Agent 失败",
         unknown: "发生未知错误",
       }
     },
@@ -1582,6 +1592,10 @@ Build when you need.`
       instructions: {
         label: "指令",
         placeholder: "Agent 的系统指令...",
+        optimize: "优化指令",
+        optimizing: "优化中...",
+        optimizeError: "优化指令失败",
+        optimizeSuccess: "优化指令成功",
       },
       executionMode: {
         label: "执行模式",
@@ -1600,16 +1614,16 @@ Build when you need.`
         configureDescription: "配置其他专用模型参数",
         noData: "暂无可用模型",
         types: {
-          general: "通用模型",
+          general: "主模型",
           smallFast: "快速模型",
           visual: "视觉模型",
-          compact: "紧凑模型",
+          compact: "长上下文模型",
         },
         tips: {
-          general: "适用于大多数任务的通用大语言模型，平衡了性能和成本。",
-          smallFast: "响应速度快，成本较低，适用于简单任务或需要低延迟的场景。",
-          visual: "具备图像识别和处理能力，适用于涉及图片的任务。",
-          compact: "轻量级模型，适用于资源受限或对即时性要求极高的场景。",
+          general: "所有任务执行的主要模型",
+          smallFast: "用于简单操作",
+          visual: "用于图像理解",
+          compact: "用于压缩对话历史记录",
         },
       },
       knowledgeBase: {
@@ -1659,12 +1673,18 @@ Build when you need.`
     },
     preview: {
       title: "预览",
+      live: "实时预览",
+      synced: "配置已同步",
       initialMessage: "你好！我是你的 Agent 预览。你可以在这里测试你的配置。",
       chat: {
         placeholder: "与你的 Agent 对话...",
         send: "发送",
         you: "你",
         agent: "测试 Agent",
+      },
+      status: {
+        connected: "已连接",
+        disconnected: "未连接",
       },
       errors: {
         noModel: "请先选择通用模型",

@@ -17,6 +17,7 @@ from .api.mcp import mcp_router
 from .api.memory import MemoryManagementRouter
 from .api.model import model_router
 from .api.monitor import monitor_router
+from .api.progress_ws import progress_ws_router
 from .api.skills import router as skills_router
 from .api.templates import router as templates_router
 from .api.text2sql import text2sql_router
@@ -26,10 +27,7 @@ from .config import UPLOADS_DIR
 from .dynamic_memory_store import get_memory_store
 from .models.database import init_db
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Logger will not configured by __main__.py, because this module is already imported in __init__.py of the subpackage.
 logger = logging.getLogger(__name__)
 
 # 导出全局 memory store 供其他模块使用
@@ -120,6 +118,7 @@ app.include_router(kb_router)
 app.include_router(model_router)
 app.include_router(ws_router)
 app.include_router(monitor_router)
+app.include_router(progress_ws_router)
 app.include_router(memory_router)
 app.include_router(mcp_router)
 app.include_router(text2sql_router)
