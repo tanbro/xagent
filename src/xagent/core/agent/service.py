@@ -1023,10 +1023,13 @@ class AgentService:
                         self.tools = [
                             tool
                             for tool in self.tools
-                            if hasattr(tool, "name") and tool.name in allowed_set
+                            if getattr(tool, "name", None) in allowed_set
                         ]
                         logger.info(
-                            f"Filtered tools by allowed_tools: {original_count} -> {len(self.tools)} tools"
+                            f"🔍 Filtered tools by allowed_tools: {original_count} -> {len(self.tools)} tools"
+                        )
+                        logger.info(
+                            f"📦 Final tools list: {[getattr(t, 'name', None) for t in self.tools]}"
                         )
 
                 # Sync tools to self.agent (for standard agents)

@@ -745,6 +745,7 @@ class PlanGenerator:
         # Build tools context
         tools_context = ""
         if tools:
+            logger.info(f"🔧 Plan generation has {len(tools)} tools available:")
             tools_context = "\n\nAVAILABLE TOOLS:\n"
             for tool in tools:
                 if tool.metadata:
@@ -758,7 +759,9 @@ class PlanGenerator:
                         tool, "description", f"Execute {tool_name}"
                     )
                 tools_context += f"- {tool_name}: {tool_description}\n"
+                logger.info(f"   - {tool_name}")
         else:
+            logger.warning("⚠️ No tools available for plan generation!")
             tools_context = "\n\nNote: No tools are currently available. Please generate a conceptual execution plan that breaks down the task into logical steps. Use hypothetical tool names that would be appropriate for each step (e.g., 'data_analyzer', 'report_generator', etc.). Each step should be executable conceptually even without actual tools.\n"
 
         # Build system prompt with role or custom instruction

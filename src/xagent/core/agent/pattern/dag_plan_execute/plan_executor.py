@@ -583,6 +583,10 @@ class PlanExecutor:
             tool_names = step.get_available_tools()
             tools: List[Tool] = []
 
+            logger.info(
+                f"🔧 Step '{step.name}' (id={step.id}) requested tools: {tool_names}"
+            )
+
             if tool_names:
                 for tool_name in tool_names:
                     tool = tool_map.get(tool_name)
@@ -595,8 +599,10 @@ class PlanExecutor:
                     tools.append(tool)
 
                 logger.info(
-                    f"Step {step.id} will use tools: {[t.metadata.name for t in tools]}"
+                    f"✅ Step '{step.name}' assigned {len(tools)} tools: {[t.metadata.name for t in tools]}"
                 )
+            else:
+                logger.info(f"⚠️ Step '{step.name}' has no tools assigned")
 
             # Use StepAgentFactory if available, otherwise fallback to direct ReAct pattern
             if self.step_agent_factory:

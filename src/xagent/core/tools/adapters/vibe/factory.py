@@ -165,19 +165,27 @@ class ToolFactory:
         # Auto-discover tools from @register_tool decorators
         tools = await ToolRegistry.create_registered_tools(config)
 
+        # Log all discovered tools before filtering
+        logger.info(f"🔧 Discovered {len(tools)} tools from registry:")
+        for tool in tools:
+            logger.info(
+                f"   - {tool.name} (category: {tool.metadata.category if hasattr(tool, 'metadata') else 'unknown'})"
+            )
+
         # Filter tools by allowed_tools if specified
         allowed_tools = config.get_allowed_tools()
+        logger.info(f"🔍 allowed_tools config: {allowed_tools}")
         if allowed_tools is not None and len(allowed_tools) > 0:
             tools = [tool for tool in tools if tool.name in allowed_tools]
             logger.info(
-                f"Filtered tools to {len(tools)} allowed tools: {[t.name for t in tools]}"
+                f"✅ Filtered tools to {len(tools)} allowed tools: {[t.name for t in tools]}"
             )
         elif allowed_tools is not None and len(allowed_tools) == 0:
             logger.warning(
                 "⚠️ allowed_tools is empty list - this will filter out all tools! If you want to allow all tools, set allowed_tools to None"
             )
 
-        logger.info(f"Created {len(tools)} tools from configuration")
+        logger.info(f"📦 Final tool count: {len(tools)} tools from configuration")
         return tools
 
     # New unified tool creation methods

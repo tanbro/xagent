@@ -300,6 +300,11 @@ class DAGPlanExecutePattern(AgentPattern):
 
             tool_map[tool_name] = tool
 
+        # Log the tool_map for debugging
+        logger.info(f"🗺️  Built tool_map with {len(tool_map)} tools:")
+        for tool_name in tool_map.keys():
+            logger.info(f"   - {tool_name}")
+
         # Save original tools for potential task continuation
         self._original_tools = tools
         execution_history: List[Dict[str, Any]] = []
@@ -448,12 +453,20 @@ class DAGPlanExecutePattern(AgentPattern):
                     if self.skill_manager:
                         # Trace skill selection start
                         skill_task_id = f"dag_plan_skill_{int(time.time())}"
+                        logger.info(f"🔍 Selecting skill for task: {task[:100]}...")
+                        logger.info(f"🔍 skill_manager: {self.skill_manager}")
+                        logger.info(f"🔍 allowed_skills: {self.allowed_skills}")
                         skill_task = self.skill_manager.select_skill(
                             task,
                             self.llm,
                             tracer=self.tracer,
                             task_id=skill_task_id,
                             allowed_skills=self.allowed_skills,
+                        )
+                        logger.info(f"🔍 Skill selection task created: {skill_task}")
+                    else:
+                        logger.warning(
+                            "⚠️ skill_manager is None, skipping skill selection"
                         )
 
                     # Execute memory and skill queries in parallel
@@ -509,12 +522,18 @@ class DAGPlanExecutePattern(AgentPattern):
                             self._skill_context = (
                                 skill_context  # Store for execution phase
                             )
-                            logger.info(f"Using skill: {skill['name']}")
+                            logger.info(f"✅ Using skill: {skill['name']}")
+                            logger.debug(
+                                f"📚 Skill context length: {len(skill_context)} chars"
+                            )
                         else:
-                            logger.info("No relevant skill found")
+                            logger.info("⚠️ No relevant skill found")
                     elif skill_result and isinstance(skill_result, Exception):
-                        logger.warning(f"Skill selection failed: {skill_result}")
+                        logger.warning(f"❌ Skill selection failed: {skill_result}")
 
+                    logger.info(
+                        f"🎯 Generating plan with {len(tools)} tools available..."
+                    )
                     plan = await self.plan_generator.generate_plan(
                         goal=enhanced_task,  # May include memory enhancement, examples already in task
                         tools=tools,

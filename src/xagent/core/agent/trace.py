@@ -263,9 +263,16 @@ class ConsoleTraceHandler(BaseTraceHandler):
 
     async def _handle_action_event(self, event: TraceEvent) -> None:
         """Handle action-level events."""
-        logger.info(
-            f"[ACTION] {event.event_type.action.value.upper()} {event.event_type.category.value.upper()} - Step {event.step_id} - {event.data}"
-        )
+        # Use DEBUG for LLM events to avoid verbose logs, INFO for others
+        if event.event_type.category == TraceCategory.LLM:
+            logger.info(
+                f"[ACTION] {event.event_type.action.value.upper()} {event.event_type.category.value.upper()} - Step {event.step_id}"
+            )
+            logger.debug(f"LLM event data: {event.data}")
+        else:
+            logger.info(
+                f"[ACTION] {event.event_type.action.value.upper()} {event.event_type.category.value.upper()} - Step {event.step_id} - {event.data}"
+            )
 
     async def _handle_system_event(self, event: TraceEvent) -> None:
         """Handle system-level events."""
