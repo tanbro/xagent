@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          python3 -m uv sync --extra dev
+          python3 -m uv sync --group dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          python3 -m uv sync --extra dev --extra deepdoc
+          python3 -m uv sync --group dev --extra deepdoc --extra document-parsing --extra ai-document --extra postgresql --extra browser --extra chromadb --extra milvus
 
       - name: Download NLTK data
         shell: bash
