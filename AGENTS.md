@@ -201,22 +201,25 @@ Run both backend and frontend in separate terminals for full-stack development.
 
 ## Skills Configuration
 
-Skills directories can be configured using the `XAGENT_SKILLS_LIBRARY_DIRS` environment variable:
+Skills directories can be extended using the `XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS` environment variable:
+- External directories are **appended** to default built-in and user directories
 - Comma-separated list of paths
 - Supports local directories, home directory expansion, and environment variables
 - Non-existent paths are skipped with warnings
-- Falls back to defaults if no valid paths found
+- Default directories are always loaded
+
+Load order: built-in → user → external (later skills override earlier ones with the same name)
 
 Examples:
 ```bash
-# Single directory
-XAGENT_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
+# Single directory (appended to defaults)
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
 
 # Multiple directories
-XAGENT_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
 
 # With path expansion
-XAGENT_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
 ```
 
 See `src/xagent/skills/README.md` for details.

@@ -59,21 +59,27 @@ See individual skill directories for examples.
 
 ### Environment Variables
 
-You can customize the skills directories by setting the `XAGENT_SKILLS_LIBRARY_DIRS` environment variable:
+You can add custom skills directories by setting the `XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS` environment variable. These directories are **appended** to the default built-in and user skills directories:
 
 ```bash
-# Single directory
-XAGENT_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
+# Single directory (appended to defaults)
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
 
-# Multiple directories (comma-separated)
-XAGENT_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
+# Multiple directories (comma-separated, all appended)
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
 
 # With path expansion
-XAGENT_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
+XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
 
-# The directories are loaded in order, with later ones overriding earlier ones
-# for skills with the same name.
+# Load order: built-in -> user -> external (later override earlier)
 ```
+
+**Important**: External directories are always appended to the default directories. The final load order is:
+1. Built-in skills (`src/xagent/skills/builtin/`)
+2. User skills (`.xagent/skills/`)
+3. External directories from `XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS`
+
+Skills with the same name are loaded in order, with later directories overriding earlier ones.
 
 ### Path Expansion Support
 
@@ -84,33 +90,35 @@ XAGENT_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
 
 ### Error Handling
 
-- Invalid paths are logged and skipped
+- Invalid paths are logged and skipped but don't affect default directories
 - Non-existent directories are warned but don't block startup
 - URL-like paths (s3://, nfs://, etc.) are rejected with a warning
-- If no valid directories are found, falls back to defaults
+- Default directories are always loaded regardless of external directory configuration
 
 ### Default Behavior
 
-If `XAGENT_SKILLS_LIBRARY_DIRS` is not set or contains no valid paths, the following default directories are used:
+The default directories are always loaded:
 1. Built-in skills: `src/xagent/skills/builtin/`
 2. User skills: `.xagent/skills/`
+
+If `XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS` is set, valid directories are appended to these defaults.
 
 ### Examples
 
 #### Development Environment
 ```bash
 # Use local skills directory for development
-export XAGENT_SKILLS_LIBRARY_DIRS="~/dev/skills,./team_skills"
+export XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="~/dev/skills,./team_skills"
 ```
 
 #### Production Environment
 ```bash
 # Use shared skills directory
-export XAGENT_SKILLS_LIBRARY_DIRS="/opt/xagent/skills,/shared/company_skills"
+export XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="/opt/xagent/skills,/shared/company_skills"
 ```
 
 #### Team Collaboration
 ```bash
 # Combine personal and team skills
-export XAGENT_SKILLS_LIBRARY_DIRS="~/my_skills,~/team_skills"
+export XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS="~/my_skills,~/team_skills"
 ```

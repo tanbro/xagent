@@ -18,28 +18,26 @@ def create_skill_manager(skills_roots: Optional[List[Path]] = None) -> SkillMana
 
     Args:
         skills_roots: Optional list of skills directories, defaults to:
-                     1. XAGENT_SKILLS_LIBRARY_DIRS env var (if set)
-                     2. Built-in and user directories (default)
+                     1. Built-in and user directories (always included)
+                     2. XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS env var (appended if set)
 
     Returns:
         SkillManager instance (not initialized)
     """
 
-    # Check environment variable first
     if skills_roots is None:
-        env_dirs = os.getenv("XAGENT_SKILLS_LIBRARY_DIRS", "")
-        if env_dirs:
-            # Parse comma-separated directories
-            skills_roots = _parse_skill_dirs(env_dirs)
+        # Always start with default directories
+        skills_roots = _get_default_skill_dirs()
 
-            if not skills_roots:
-                logger.warning(
-                    "No valid skill directories found in XAGENT_SKILLS_LIBRARY_DIRS, using defaults"
+        # Append external directories if configured
+        env_dirs = os.getenv("XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS", "")
+        if env_dirs:
+            external_dirs = _parse_skill_dirs(env_dirs)
+            if external_dirs:
+                skills_roots = skills_roots + external_dirs
+                logger.info(
+                    f"Appended {len(external_dirs)} external skill directories to defaults"
                 )
-                skills_roots = _get_default_skill_dirs()
-        else:
-            # Use default paths
-            skills_roots = _get_default_skill_dirs()
 
     # Create skill_manager (not initialized)
     skill_manager = SkillManager(skills_roots=skills_roots)
@@ -49,7 +47,7 @@ def create_skill_manager(skills_roots: Optional[List[Path]] = None) -> SkillMana
 
 def _parse_skill_dirs(env_value: str) -> List[Path]:
     """
-    Parse XAGENT_SKILLS_LIBRARY_DIRS environment variable
+    Parse XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS environment variable
 
     Args:
         env_value: Comma-separated directory paths

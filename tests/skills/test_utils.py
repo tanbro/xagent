@@ -132,38 +132,50 @@ class TestCreateSkillManager:
             assert len(manager.skills_roots) == 2
 
     def test_with_environment_variable(self):
-        """Test with XAGENT_SKILLS_LIBRARY_DIRS set"""
+        """Test with XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS set"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": tmpdir}):
+            with patch.dict(
+                os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": tmpdir}
+            ):
                 manager = create_skill_manager()
                 assert manager is not None
-                assert len(manager.skills_roots) == 1
-                assert manager.skills_roots[0] == Path(tmpdir)
+                # Should have 2 default dirs + 1 external dir
+                assert len(manager.skills_roots) == 3
+                # Last one should be the external dir
+                assert manager.skills_roots[2] == Path(tmpdir)
 
     def test_with_multiple_directories(self):
         """Test with multiple directories in environment variable"""
         with tempfile.TemporaryDirectory() as tmpdir1:
             with tempfile.TemporaryDirectory() as tmpdir2:
                 env_value = f"{tmpdir1},{tmpdir2}"
-                with patch.dict(os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": env_value}):
+                with patch.dict(
+                    os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": env_value}
+                ):
                     manager = create_skill_manager()
                     assert manager is not None
-                    assert len(manager.skills_roots) == 2
+                    # Should have 2 default dirs + 2 external dirs
+                    assert len(manager.skills_roots) == 4
+                    # Last two should be the external dirs
+                    assert manager.skills_roots[2] == Path(tmpdir1)
+                    assert manager.skills_roots[3] == Path(tmpdir2)
 
     def test_with_invalid_environment_variable_falls_back_to_default(self):
-        """Test falls back to defaults when all paths are invalid"""
+        """Test invalid external paths are skipped but defaults remain"""
         with patch.dict(
-            os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": "/nonexistent/path"}
+            os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": "/nonexistent/path"}
         ):
             manager = create_skill_manager()
             assert manager is not None
-            # Should fall back to defaults
+            # Should have default dirs (external path is skipped)
             assert len(manager.skills_roots) == 2
 
     def test_explicit_skills_roots_parameter(self):
         """Test explicit skills_roots parameter overrides environment"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": "/other/path"}):
+            with patch.dict(
+                os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": "/other/path"}
+            ):
                 manager = create_skill_manager(skills_roots=[Path(tmpdir)])
                 assert manager is not None
                 assert len(manager.skills_roots) == 1
@@ -173,12 +185,14 @@ class TestCreateSkillManager:
         """Test URL paths in environment variable are skipped"""
         with tempfile.TemporaryDirectory() as tmpdir:
             env_value = f"s3://bucket/skills,{tmpdir},nfs://server/skills"
-            with patch.dict(os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": env_value}):
+            with patch.dict(
+                os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": env_value}
+            ):
                 manager = create_skill_manager()
                 assert manager is not None
-                # Only the local path should be included
-                assert len(manager.skills_roots) == 1
-                assert manager.skills_roots[0] == Path(tmpdir)
+                # Should have 2 default dirs + 1 valid external dir (URLs skipped)
+                assert len(manager.skills_roots) == 3
+                assert manager.skills_roots[2] == Path(tmpdir)
 
     def test_path_expansion_in_environment_variable(self):
         """Test path expansion works in environment variable"""
@@ -187,12 +201,14 @@ class TestCreateSkillManager:
         try:
             test_dir.mkdir(exist_ok=True)
             with patch.dict(
-                os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": "~/test_xagent_skills"}
+                os.environ,
+                {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": "~/test_xagent_skills"},
             ):
                 manager = create_skill_manager()
                 assert manager is not None
-                assert len(manager.skills_roots) == 1
-                assert manager.skills_roots[0] == test_dir
+                # Should have 2 default dirs + 1 external dir
+                assert len(manager.skills_roots) == 3
+                assert manager.skills_roots[2] == test_dir
         finally:
             test_dir.rmdir()
 
@@ -210,16 +226,23 @@ class TestSkillManagerIntegration:
             (skill_dir / "SKILL.md").write_text("# Test Skill\n\nA test skill.")
 
             # Set environment variable
-            with patch.dict(os.environ, {"XAGENT_SKILLS_LIBRARY_DIRS": tmpdir}):
+            with patch.dict(
+                os.environ, {"XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS": tmpdir}
+            ):
                 manager = create_skill_manager()
                 import asyncio
 
                 asyncio.run(manager.initialize())
 
-                # Verify skill was loaded
+                # Verify skills were loaded (builtin + external)
                 skills = asyncio.run(manager.list_skills())
-                assert len(skills) == 1
-                assert skills[0]["name"] == "test_skill"
+                # Should have builtin skills + our test skill
+                assert len(skills) >= 1
+                # Check that our test skill is there
+                test_skill_found = any(s["name"] == "test_skill" for s in skills)
+                assert test_skill_found, (
+                    "Test skill should be loaded from external directory"
+                )
 
     def test_default_behavior_without_config(self):
         """Test default behavior when no configuration is provided"""
