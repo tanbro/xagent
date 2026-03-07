@@ -55,6 +55,8 @@ dependencies = [
   "jsonschema>=4.25.1",
   "beartype>=0.18.5",
   "matplotlib>=3.5.0",
+  # Data science libraries (core for RAG and analysis)
+  "pandas>=1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -130,9 +132,6 @@ test = [
   "chromadb",
   "pymilvus>=2.6.9,<3.0.0",
   "copilotkit==0.1.69",
-  # Data science libraries for testing
-  "numpy>=1.21.0",
-  "pandas>=1.3.0",
   "openpyxl>=3.1.5",
 ]
 

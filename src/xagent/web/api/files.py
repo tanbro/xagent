@@ -2,12 +2,12 @@
 
 import asyncio
 import logging
+import tempfile
 from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from pptx import Presentation
 from sqlalchemy.orm import Session
 
 from ...core.tools.adapters.vibe.file_tool import read_file
@@ -417,6 +417,7 @@ async def download_file(
     db: Session = Depends(get_db),
 ) -> Any:
     """Download uploaded file"""
+    full_path: Path | None = None
     try:
         logger.info(f"Download request for file_path: {file_path}")
 
@@ -589,6 +590,9 @@ async def download_file(
             else:
                 logger.info(f"Found file by direct path: {full_path}")
 
+        if full_path is None:
+            raise RuntimeError("full_path is None")
+
         # Security check: ensure the path is within allowed directories
         try:
             resolved_path = full_path.resolve()
@@ -617,7 +621,6 @@ async def download_file(
         # Handle PPTX files - convert to PDF using LibreOffice for preview
         if filename.endswith(".pptx"):
             logger.info(f"Converting PPTX to PDF for download: {full_path}")
-            import tempfile
 
             try:
                 # Create a temporary directory for the conversion
@@ -801,7 +804,15 @@ async def preview_file(
         # Handle PPTX files - convert to PDF using LibreOffice for preview
         if filename.endswith(".pptx"):
             logger.info(f"Converting PPTX to PDF for preview: {found_path}")
-            import tempfile
+            try:
+                import pptx  # pyright: ignore[reportMissingImports]
+            except ImportError:
+                logger.warning("PPTX module not found, returning original PPTX")
+                return FileResponse(
+                    path=str(found_path),
+                    filename=filename,
+                    media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                )
 
             try:
                 # Create a temporary directory for the conversion
@@ -872,7 +883,7 @@ async def preview_file(
             # Fallback: extract text using python-pptx if LibreOffice fails
             logger.info(f"Falling back to text extraction for PPTX: {found_path}")
             try:
-                prs = Presentation(str(found_path))
+                prs = pptx.Presentation(str(found_path))
                 html_content = """
                 <!DOCTYPE html>
                 <html>
