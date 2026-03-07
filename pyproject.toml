@@ -93,7 +93,7 @@ milvus = ["pymilvus>=2.6.9,<3.0.0"]
 # All optional extras (for users who want everything)
 # Note: List packages directly since optional-dependencies doesn't support include-group
 all = [
-  "deepdoc-lib @ git+https://github.com/xorbitsai/deepdoc-lib.git@fe75bbb676b141a1ea4257b198f6a04a89e5ac5c",
+  "deepdoc-lib @ git+https://github.com/xorbitsai/deepdoc-lib.git@88f420a1c032a07688115b5182ac6eb210efd961",
   "pdfplumber>=0.10.0",
   "unstructured>=0.15.0",
   "pymupdf>=1.23.0",
