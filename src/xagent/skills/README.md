@@ -54,3 +54,63 @@ See individual skill directories for examples.
 1. Create a directory in `.xagent/skills/your_skill/`
 2. Add `SKILL.md` and any other files
 3. Restart the server or call `POST /api/skills/reload`
+
+## Configuration
+
+### Environment Variables
+
+You can customize the skills directories by setting the `XAGENT_SKILLS_LIBRARY_DIRS` environment variable:
+
+```bash
+# Single directory
+XAGENT_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
+
+# Multiple directories (comma-separated)
+XAGENT_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
+
+# With path expansion
+XAGENT_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
+
+# The directories are loaded in order, with later ones overriding earlier ones
+# for skills with the same name.
+```
+
+### Path Expansion Support
+
+- **Home Directory**: `~` is expanded to the user's home directory
+- **Environment Variables**: `$VAR` and `${VAR}` syntax are supported
+- **Relative Paths**: Converted to absolute paths automatically
+- **Path Validation**: Non-existent paths are skipped with a warning
+
+### Error Handling
+
+- Invalid paths are logged and skipped
+- Non-existent directories are warned but don't block startup
+- URL-like paths (s3://, nfs://, etc.) are rejected with a warning
+- If no valid directories are found, falls back to defaults
+
+### Default Behavior
+
+If `XAGENT_SKILLS_LIBRARY_DIRS` is not set or contains no valid paths, the following default directories are used:
+1. Built-in skills: `src/xagent/skills/builtin/`
+2. User skills: `.xagent/skills/`
+
+### Examples
+
+#### Development Environment
+```bash
+# Use local skills directory for development
+export XAGENT_SKILLS_LIBRARY_DIRS="~/dev/skills,./team_skills"
+```
+
+#### Production Environment
+```bash
+# Use shared skills directory
+export XAGENT_SKILLS_LIBRARY_DIRS="/opt/xagent/skills,/shared/company_skills"
+```
+
+#### Team Collaboration
+```bash
+# Combine personal and team skills
+export XAGENT_SKILLS_LIBRARY_DIRS="~/my_skills,~/team_skills"
+```

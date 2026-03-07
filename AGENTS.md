@@ -198,3 +198,26 @@ npm run start  # Production mode
 
 **Development Mode:**
 Run both backend and frontend in separate terminals for full-stack development.
+
+## Skills Configuration
+
+Skills directories can be configured using the `XAGENT_SKILLS_LIBRARY_DIRS` environment variable:
+- Comma-separated list of paths
+- Supports local directories, home directory expansion, and environment variables
+- Non-existent paths are skipped with warnings
+- Falls back to defaults if no valid paths found
+
+Examples:
+```bash
+# Single directory
+XAGENT_SKILLS_LIBRARY_DIRS="/path/to/custom/skills"
+
+# Multiple directories
+XAGENT_SKILLS_LIBRARY_DIRS="/path/to/skills1,/path/to/skills2,~/skills"
+
+# With path expansion
+XAGENT_SKILLS_LIBRARY_DIRS="~/skills,$HOME/custom_skills,./local_skills"
+```
+
+See `src/xagent/skills/README.md` for details.
+Run both backend and frontend in separate terminals for full-stack development.
