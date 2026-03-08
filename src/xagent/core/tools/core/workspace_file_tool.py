@@ -22,7 +22,7 @@ from .file_tool import (
     PREVIEW_LINES,
     EditOperation,
     EditResult,
-    _get_file_preview_from_content,
+    _get_file_preview_from_file,
     _is_binary_by_mime,
     _is_binary_file,
 )
@@ -293,11 +293,11 @@ class WorkspaceFileOperations:
 
             # Check if file exceeds size limit
             if file_size > DEFAULT_MAX_FILE_SIZE:
-                # File is too large - read all content and generate preview
-                f.seek(0)  # Seek back to beginning
-                content = f.read().decode(encoding, errors="ignore")
+                # File is too large - generate preview without reading entire file
                 logger.debug("File too large (%d bytes), generating preview", file_size)
-                return _get_file_preview_from_content(content, file_size, PREVIEW_LINES)
+                return _get_file_preview_from_file(
+                    f, file_size, encoding, PREVIEW_LINES
+                )
 
             # File is within size limit - read and decode full content
             f.seek(0)  # Seek back to beginning

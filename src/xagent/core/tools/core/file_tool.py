@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 import re
+from io import BufferedReader
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -17,7 +18,8 @@ from pydantic import BaseModel
 
 # Constants for file safety
 DEFAULT_MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB default limit
-PREVIEW_LINES = 50  # Number of lines to show in preview for large files
+PREVIEW_LINES = 100  # Number of lines to show in preview for large files
+PREVIEW_MAX_BYTES = 64 * 1024  # 64KB max for preview (prevent reading huge lines)
 BINARY_CHECK_BYTES = 1024  # Number of bytes to check for binary content
 
 
@@ -124,50 +126,58 @@ def _is_binary_file(file_path: str, chunk: bytes) -> bool:
     return False
 
 
-def _get_file_preview_from_content(
-    content: str, file_size: int, max_lines: int = PREVIEW_LINES
+def _get_file_preview_from_file(
+    f: BufferedReader, file_size: int, encoding: str, max_lines: int = PREVIEW_LINES
 ) -> str:
-    """Generate a preview from decoded content string.
+    """Generate a preview by reading head lines from file.
+
+    The `f` MUST be opened in binary mode!
 
     Args:
-        content: Decoded file content
+        f: File object (opened in binary mode, position is at current read point)
         file_size: File size in bytes
-        max_lines: Number of lines to show from head and tail
+        encoding: Text encoding
+        max_lines: Number of lines to show from head
 
     Returns:
         Preview string with file metadata and content preview
     """
-    lines = content.splitlines(keepends=True)
-    total_lines = len(lines)
+    # Save current position
+    original_pos = f.tell()
 
-    # Extract head and tail lines
-    head_lines = lines[:max_lines]
-    head_lines_str = "".join(head_lines).rstrip("\n")
+    # Read head lines from start of file (line-by-line, with bytes limit)
+    f.seek(0)
+    head_lines = []
+    bytes_read = 0
+    for i in range(max_lines):
+        line = f.readline()
+        if not line:  # EOF
+            break
+        bytes_read += len(line)
+        if bytes_read > PREVIEW_MAX_BYTES:  # Prevent reading huge lines
+            head_lines.append(
+                f"{i + 1}\t[... preview truncated after {PREVIEW_MAX_BYTES // 1024}KB ...]\n"
+            )
+            break
+        try:
+            decoded_line = line.decode(encoding)
+            head_lines.append(f"{i + 1}\t{decoded_line}")  # Line number + content
+        except UnicodeDecodeError:
+            head_lines.append(f"{i + 1}\t[undecodable line]\n")
 
-    tail_lines = []
-    if total_lines > max_lines * 2:
-        tail_lines = lines[-max_lines:]
-        tail_lines_str = "".join(tail_lines).rstrip("\n")
-    else:
-        tail_lines_str = ""
+    # Restore position
+    f.seek(original_pos)
 
-    # Build preview
+    # Build preview with line numbers (cat -n format)
     size_mb = file_size / 1024 / 1024
-    preview_parts = [
+    preview_header = [
         "# File too large for complete reading",
         f"# Size: {file_size:,} bytes ({size_mb:.2f} MB)",
-        f"# Lines: {total_lines:,}",
-        f"# Showing preview (first {len(head_lines)} and last {len(tail_lines)} lines):",
+        f"# Showing preview (first {len(head_lines)} lines):",
         "",
-        head_lines_str,
     ]
 
-    if tail_lines:
-        omitted_lines = total_lines - len(head_lines) - len(tail_lines)
-        preview_parts.append(f"\n# ... ({omitted_lines:,} lines omitted) ...\n")
-        preview_parts.append(tail_lines_str)
-
-    return "\n".join(preview_parts)
+    return "\n".join(preview_header) + "".join(head_lines)
 
 
 def read_file(
@@ -210,10 +220,8 @@ def read_file(
 
         # Check if file exceeds size limit
         if file_size > max_size:
-            # File is too large - read all content and generate preview
-            f.seek(0)  # Seek back to beginning
-            content = f.read().decode(encoding, errors="ignore")
-            return _get_file_preview_from_content(content, file_size, PREVIEW_LINES)
+            # File is too large - generate preview without reading entire file
+            return _get_file_preview_from_file(f, file_size, encoding, PREVIEW_LINES)
 
         # File is within size limit - read and decode full content
         f.seek(0)  # Seek back to beginning

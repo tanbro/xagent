@@ -11,7 +11,7 @@ import pytest
 
 from xagent.core.tools.core.file_tool import (
     DEFAULT_MAX_FILE_SIZE,
-    _get_file_preview_from_content,
+    _get_file_preview_from_file,
     _is_binary_by_content,
     _is_binary_by_mime,
     _is_binary_file,
@@ -149,10 +149,11 @@ class TestFileSizeLimit:
         try:
             result = read_file(temp_file, max_size=1024)  # Very small limit
             assert "# File too large for complete reading" in result
-            assert "Lines: 2,000" in result
             assert "Showing preview" in result
-            assert "Line number 0" in result
-            assert "Line number 1999" in result
+            # Check that preview has line numbers
+            assert "\tLine number 0\r\n" in result or "\tLine number 0\n" in result
+            # Check that only first lines are shown (not tail)
+            assert "Line number 1999" not in result
         finally:
             os.unlink(temp_file)
 
@@ -174,34 +175,72 @@ class TestGetFilePreview:
     """Test preview generation for large files."""
 
     def test_get_file_preview_with_large_file(self):
-        """Test preview generation includes metadata and head/tail."""
+        """Test preview generation includes metadata and head only (no tail)."""
         lines = ["Line {}\n".format(i) for i in range(200)]
         content = "".join(lines)
         file_size = len(content.encode("utf-8"))
-        preview = _get_file_preview_from_content(content, file_size, max_lines=50)
-        assert "# File too large for complete reading" in preview
-        assert "Lines: 200" in preview
-        assert "Size:" in preview
-        assert "Showing preview" in preview
-        assert "Line 0" in preview
-        assert "Line 199" in preview
+
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
+            temp_file = f.name
+            f.write(content.encode("utf-8"))
+
+        try:
+            with open(temp_file, "rb") as f:
+                preview = _get_file_preview_from_file(
+                    f, file_size, "utf-8", max_lines=50
+                )
+                assert "# File too large for complete reading" in preview
+                assert "Size:" in preview
+                assert "Showing preview" in preview
+                # Check that preview has line numbers (cat -n format)
+                assert "\tLine 0\n" in preview
+                # Check that only first lines are shown, not tail
+                assert "Line 199" not in preview  # Tail should NOT be present
+        finally:
+            os.unlink(temp_file)
 
     def test_get_file_preview_with_small_file(self):
         """Test preview with file smaller than preview lines."""
         lines = ["Line {}\n".format(i) for i in range(10)]
         content = "".join(lines)
         file_size = len(content.encode("utf-8"))
-        preview = _get_file_preview_from_content(content, file_size, max_lines=50)
-        assert "Lines: 10" in preview
-        assert "Showing preview" in preview
 
-    def test_count_lines(self):
-        """Test line counting functionality."""
-        lines = ["Line {}\n".format(i) for i in range(10)]
-        content = "".join(lines)
-        file_size = len(content.encode("utf-8"))
-        preview = _get_file_preview_from_content(content, file_size, max_lines=50)
-        assert "Lines: 10" in preview
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
+            temp_file = f.name
+            f.write(content.encode("utf-8"))
+
+        try:
+            with open(temp_file, "rb") as f:
+                preview = _get_file_preview_from_file(
+                    f, file_size, "utf-8", max_lines=50
+                )
+                assert "Showing preview" in preview
+                # All 10 lines should be present
+                assert "\tLine 0\n" in preview
+                assert "\tLine 9\n" in preview
+        finally:
+            os.unlink(temp_file)
+
+    def test_preview_bytes_limit(self):
+        """Test preview respects bytes limit to prevent reading huge lines."""
+        # Create a file with one very long line (no newlines)
+        long_line = "x" * 100000  # 100KB single line
+        file_size = len(long_line.encode("utf-8"))
+
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as f:
+            temp_file = f.name
+            f.write(long_line.encode("utf-8"))
+
+        try:
+            with open(temp_file, "rb") as f:
+                preview = _get_file_preview_from_file(
+                    f, file_size, "utf-8", max_lines=100
+                )
+                # Should truncate after 64KB
+                assert "preview truncated after 64KB" in preview
+                assert "# File too large for complete reading" in preview
+        finally:
+            os.unlink(temp_file)
 
 
 class TestReadFileErrors:
