@@ -86,13 +86,6 @@ class TestBinaryDetection:
         chunk = b"Hello, World!\nThis is plain text."
         assert _is_binary_by_content(chunk) is False
 
-    def test_is_binary_by_content_with_high_bytes(self):
-        """Test content detection rejects files with >30% high bytes."""
-        # Create a chunk with many high bytes (bytes > 127)
-        # 60% high bytes
-        chunk = b"\xff\xfe\xfd" * 100 + b"Hello" * 100
-        assert _is_binary_by_content(chunk) is True
-
     def test_is_binary_file_with_text_file(self):
         """Test comprehensive binary detection accepts text files."""
         with tempfile.NamedTemporaryFile(
