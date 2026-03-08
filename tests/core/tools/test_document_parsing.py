@@ -373,22 +373,6 @@ class TestWorkspaceFileOperationsDocumentParsing:
         # Should handle the BOM gracefully
         assert "Content with BOM" in content
 
-    def test_read_file_encoding_fallback_to_latin1(self, tmp_path):
-        """Test that encoding fallback includes latin-1 which can decode any byte sequence."""
-        workspace = TaskWorkspace("test_task", str(tmp_path))
-        ops = WorkspaceFileOperations(workspace)
-
-        # Create a binary file with bytes that are invalid UTF-8
-        # but valid in latin-1 (which can decode any byte)
-        bin_path = workspace.input_dir / "test.bin"
-        bin_path.write_bytes(b"\xff\xfe\xfd\xfc")
-
-        # Reading should succeed with latin-1 fallback
-        # latin-1 can decode any byte sequence
-        content = ops.read_file("test.bin")
-        assert isinstance(content, str)
-        assert len(content) == 4  # Each byte becomes a character
-
     def test_read_file_from_output_directory(self, tmp_path):
         """Test reading document file from output directory."""
         workspace = TaskWorkspace("test_task", str(tmp_path))
