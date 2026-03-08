@@ -137,12 +137,12 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             FileTool(
                 self.read_file,
                 name="read_file",
-                description="Read file content in workspace. Use relative paths (e.g., 'filename.txt'), not absolute paths.",
+                description="Read text/PDF/Office docs. Text files: max 1MB, larger preview. Use relative paths.",
             ),
             FileTool(
                 self.write_file,
                 name="write_file",
-                description="Write file content in workspace. Use relative paths (e.g., 'filename.txt'), not absolute paths.\n\nImportant: For HTML files, when referencing resources in the same directory (CSS, JS, images), only use filenames (e.g., '1.png'), not absolute paths (e.g., '/uploads/xxx/1.png'). All files are in the workspace, and browsers will automatically resolve relative paths.",
+                description="Write content to file in workspace. Creates parent directories. Use relative paths.",
             ),
             FileTool(
                 self.append_file,

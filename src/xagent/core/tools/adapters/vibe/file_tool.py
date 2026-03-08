@@ -34,12 +34,20 @@ class FileTool(FunctionTool):
 
 
 # Create basic tool instances (these tools are unsafe, for internal use only)
-read_file_tool = FileTool(read_file, name="read_file", description="Read file content")
+read_file_tool = FileTool(
+    read_file,
+    name="read_file",
+    description="Read text file (max 1MB, larger files show preview). Binary files rejected.",
+)
 write_file_tool = FileTool(
-    write_file, name="write_file", description="Write content to file"
+    write_file,
+    name="write_file",
+    description="Write content to text file. Creates parent directories.",
 )
 append_file_tool = FileTool(
-    append_file, name="append_file", description="Append content to file"
+    append_file,
+    name="append_file",
+    description="Append content to text file.",
 )
 delete_file_tool = FileTool(delete_file, name="delete_file", description="Delete file")
 list_files_tool = FileTool(
