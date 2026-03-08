@@ -17,6 +17,7 @@ const zh = {
     planning: "正在制定计划",
     taskPaused: "任务已暂停",
     noData: "暂无数据",
+    refresh: "刷新",
     errors: {
       unknown: "未知错误",
     },
@@ -113,6 +114,24 @@ const zh = {
       dropHere: "将文件拖拽到此处",
       uploadDocs: "上传文档",
       hintDragClick: "拖拽文件或点击选择",
+    },
+    clarification: {
+      yes: "是",
+      no: "否",
+      required: "请至少填写一项",
+      uploadedFiles: "已上传文件",
+      confirmed: "已确认",
+      sendFailed: "发送澄清回复失败",
+      sendError: "发送回复失败",
+      selectOption: "请选择一个选项",
+      selectOptions: "请选择选项",
+      acceptedFormats: "支持的格式",
+      any: "任意",
+      title: "询问用户",
+      submitting: "提交中...",
+      submit: "提交回复",
+      unsupportedType: "不支持的字段类型: {type}",
+      continue: "继续",
     },
   },
   branding: {
@@ -609,9 +628,14 @@ Build when you need.`
     },
   },
   files: {
+    fileTooLarge: "文件过大（最大 100MB）",
     header: {
       title: "文件管理",
       description: "管理项目文件：上传、预览、下载与删除",
+    },
+    tabs: {
+      input: "输入",
+      output: "输出",
     },
     search: {
       placeholder: "搜索文件...",
@@ -1536,7 +1560,8 @@ Build when you need.`
         welcome: "你好！我是 {name}。{description}\n\n你可以直接开始对话，或者选择下方的建议提示词。",
         inputPlaceholder: "输入你的消息...",
         loading: "加载 agent 中...",
-        notFound: "Agent 未找到",
+        notFound: "Agent 不存在",
+        notFoundDescription: "该 Agent 不存在或已被删除，你可以创建一个新的 Agent 开始",
         failed: "加载 agent 失败",
         taskCreated: "任务已创建。正在实现 WebSocket 连接...",
         error: "错误：{message}",
@@ -1575,8 +1600,17 @@ Build when you need.`
         failed: "创建 Agent 失败",
         publishFailed: "发布 Agent 失败",
         unpublishFailed: "取消发布 Agent 失败",
+        kbToolsNotEnabled: "选择了知识库但未启用知识库工具，请在工具类别中勾选「知识库」工具后再保存。",
         unknown: "发生未知错误",
-      }
+      },
+      kbToolWarning: {
+        title: "需要启用知识库工具",
+        description: "您已选择了知识库，但尚未启用「知识库」工具类别。Agent 需要知识库工具才能检索和使用知识库中的内容。",
+        hint: "点击下方按钮可一键启用知识库工具，启用后请重新保存。",
+        cancel: "稍后处理",
+        enableAndContinue: "启用知识库工具",
+        enabled: "已启用知识库工具，请重新保存",
+      },
     },
     configForm: {
       logo: {
@@ -1658,6 +1692,20 @@ Build when you need.`
           ppt: "PowerPoint",
           office: "办公工具",
           specialImage: "图像工具",
+          agent: "Agent 调用",
+        },
+        categoryDescriptions: {
+          basic: "系统基础能力，包括数学计算、日期时间获取等核心功能。",
+          file: "文件系统操作，支持文件的读写、搜索、列表和管理。",
+          vision: "计算机视觉能力，支持图像识别、分析和内容提取。",
+          image: "图像生成与处理，支持文生图、图像编辑等创意功能。",
+          knowledge: "知识库检索与管理，支持文档内容的语义搜索和引用。",
+          mcp: "Model Context Protocol 扩展，连接外部服务和数据源。",
+          browser: "网页浏览与自动化，支持网页内容抓取和交互操作。",
+          ppt: "演示文稿制作，支持幻灯片的生成、编辑和格式化。",
+          office: "办公文档处理，支持 Word、Excel 等常用格式的操作。",
+          specialImage: "高级图像处理，提供更专业的图像分析和转换工具。",
+          agent: "多智能体协同，支持调用其他 Agent 完成复杂任务。",
           skill: "技能",
           database: "数据库",
         },
@@ -1763,7 +1811,7 @@ Build when you need.`
           hint: "主要用于处理复杂任务，默认使用模型管理页面设置的默认模型",
         },
         smallFast: {
-          label: "小型/快速模型（可选）",
+          label: "快速模型（可选）",
           placeholder: "选择快速模型...",
           hint: "可选配置，用于处理简单任务以获得更快的响应速度",
           options: {
