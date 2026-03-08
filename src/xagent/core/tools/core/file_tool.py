@@ -85,24 +85,18 @@ def _is_binary_by_mime(file_path: str) -> bool:
 def _is_binary_by_content(chunk: bytes) -> bool:
     """Check if bytes chunk appears to be binary.
 
+    Only checks for null bytes, which are a strong indicator of binary files.
+    All other validation (encoding, etc.) is left to the actual decoding step.
+
     Args:
         chunk: Bytes chunk to examine
 
     Returns:
         True if chunk appears to be binary, False otherwise
     """
-    # Check 1: Null bytes (strong indicator of binary files)
-    if b"\x00" in chunk:
-        return True
-
-    # Check 2: High byte ratio
-    # If >30% of bytes are >0x7F, likely binary
-    if len(chunk) > 0:
-        high_bytes = sum(1 for b in chunk if b > 0x7F)
-        if high_bytes / len(chunk) > 0.3:
-            return True
-
-    return False
+    # Null bytes are a strong indicator of binary files
+    # They almost never appear in text files (UTF-8, Latin-1, etc.)
+    return b"\x00" in chunk
 
 
 def _is_binary_file(file_path: str, chunk: bytes) -> bool:
