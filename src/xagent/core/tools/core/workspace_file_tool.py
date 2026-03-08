@@ -8,6 +8,7 @@ It focuses on pure file operations without tool framework dependencies.
 import asyncio
 import csv
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -16,7 +17,15 @@ from pydantic import BaseModel
 
 from ...workspace import TaskWorkspace
 from .document_parser import DocumentCapabilities, DocumentParseArgs, parse_document
-from .file_tool import EditOperation, EditResult
+from .file_tool import (
+    DEFAULT_MAX_FILE_SIZE,
+    PREVIEW_LINES,
+    EditOperation,
+    EditResult,
+    _get_file_preview_from_content,
+    _is_binary_by_mime,
+    _is_binary_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +192,26 @@ class WorkspaceFileOperations:
         self.workspace = workspace
 
     def read_file(self, file_path: str, encoding: str = "utf-8") -> str:
-        """Read file content in workspace"""
+        """
+        Read the content of a text file from the workspace.
+
+        This function can only read text files. Binary files (like images, PDFs, executables) will be rejected.
+        Document files (PDF, DOCX, XLSX, etc.) will be automatically parsed to extract text content.
+        For files larger than 1MB, a preview with the first and last 50 lines will be returned instead.
+
+        The file path is searched in this order:
+        1. Input directory (for user-uploaded files)
+        2. Output directory (for generated files)
+
+        Args:
+            file_path: Path to the file (relative to workspace directories)
+            encoding: Text encoding format (default: utf-8). Most text files use utf-8.
+
+        Returns:
+            - For small files (≤1MB): The complete file content as text
+            - For large files (>1MB): A preview showing the first and last 50 lines with file metadata
+            - For documents: Extracted text content
+        """
         logger.debug(
             "read_file called with file_path: %s, workspace_id: %s",
             file_path,
@@ -229,7 +257,15 @@ class WorkspaceFileOperations:
 
         logger.debug("Reading file: %s", resolved_path)
 
-        # Check if this is a document file that requires special parsing
+        # Step 1: Quick MIME check (no file I/O)
+        if _is_binary_by_mime(str(resolved_path)):
+            raise ValueError(
+                f"Cannot read binary file: {file_path}. "
+                f"This tool only supports text files."
+            )
+
+        # Step 2: Check if this is a document file that requires special parsing
+        # (Document files bypass binary checks and go directly to parser)
         if is_document_file(str(resolved_path)):
             logger.debug("Detected document file, using document parser")
             content = extract_text_from_document(str(resolved_path))
@@ -240,34 +276,36 @@ class WorkspaceFileOperations:
             )
             return content
 
-        # Try to read as regular text file
-        try:
-            with open(resolved_path, "r", encoding=encoding) as f:
-                content = f.read()
-                logger.debug(
-                    "Successfully read %d bytes from %s", len(content), resolved_path
-                )
-                return content
-        except UnicodeDecodeError:
-            # If text reading fails with encoding error, try common encodings
-            for fallback_encoding in ["utf-8-sig", "latin-1", "cp1252"]:
-                try:
-                    with open(resolved_path, "r", encoding=fallback_encoding) as f:
-                        content = f.read()
-                        logger.debug(
-                            "Successfully read %d bytes from %s using %s encoding",
-                            len(content),
-                            resolved_path,
-                            fallback_encoding,
-                        )
-                        return content
-                except UnicodeDecodeError:
-                    continue
+        # Step 3: Open file ONCE in binary mode for all checks and reading
+        with open(resolved_path, "rb") as f:
+            # Read first chunk for safety checks
+            chunk = f.read(8192)
 
-            # If all encodings fail, raise error
-            raise ValueError(
-                f"Unable to read file {resolved_path} with any supported encoding"
+            # Binary file detection (MIME + content checks)
+            if _is_binary_file(str(resolved_path), chunk):
+                raise ValueError(
+                    f"Cannot read binary file: {file_path}. "
+                    f"This tool only supports text files."
+                )
+
+            # Get file size
+            file_size = os.path.getsize(resolved_path)
+
+            # Check if file exceeds size limit
+            if file_size > DEFAULT_MAX_FILE_SIZE:
+                # File is too large - read all content and generate preview
+                f.seek(0)  # Seek back to beginning
+                content = f.read().decode(encoding, errors="ignore")
+                logger.debug("File too large (%d bytes), generating preview", file_size)
+                return _get_file_preview_from_content(content, file_size, PREVIEW_LINES)
+
+            # File is within size limit - read and decode full content
+            f.seek(0)  # Seek back to beginning
+            content = f.read().decode(encoding)
+            logger.debug(
+                "Successfully read %d bytes from %s", len(content), resolved_path
             )
+            return content
 
     def write_file(
         self,

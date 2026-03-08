@@ -7,12 +7,18 @@ For workspace-related file operations, use the workspace_file_tool.py module.
 
 import csv
 import json
+import mimetypes
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel
+
+# Constants for file safety
+DEFAULT_MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB default limit
+PREVIEW_LINES = 50  # Number of lines to show in preview for large files
+BINARY_CHECK_BYTES = 1024  # Number of bytes to check for binary content
 
 
 class FileInfo(BaseModel):
@@ -53,23 +59,165 @@ class EditResult(BaseModel):
     preview: Optional[str] = None
 
 
-def read_file(file_path: str, encoding: str = "utf-8") -> str:
-    """
-    Read string from text file
+def _is_binary_by_mime(file_path: str) -> bool:
+    """Check if file is binary using MIME type detection.
 
     Args:
-        file_path: File path
-        encoding: File encoding, defaults to utf-8
+        file_path: Path to the file
 
     Returns:
-        File content string
-
-    Raises:
-        FileNotFoundError: File doesn't exist
-        UnicodeDecodeError: Encoding error
+        True if MIME type is not text/, False otherwise
     """
-    with open(file_path, "r", encoding=encoding) as f:
-        return f.read()
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if mime_type is None:
+        # Unknown MIME type - don't treat as binary yet, let content check decide
+        return False
+    if mime_type.startswith("text/"):
+        return False
+    if mime_type in ["application/json", "application/javascript"]:
+        # JSON and JS are text files
+        return False
+    return True
+
+
+def _is_binary_by_content(chunk: bytes) -> bool:
+    """Check if bytes chunk appears to be binary.
+
+    Args:
+        chunk: Bytes chunk to examine
+
+    Returns:
+        True if chunk appears to be binary, False otherwise
+    """
+    # Check 1: Null bytes (strong indicator of binary files)
+    if b"\x00" in chunk:
+        return True
+
+    # Check 2: High byte ratio
+    # If >30% of bytes are >0x7F, likely binary
+    if len(chunk) > 0:
+        high_bytes = sum(1 for b in chunk if b > 0x7F)
+        if high_bytes / len(chunk) > 0.3:
+            return True
+
+    return False
+
+
+def _is_binary_file(file_path: str, chunk: bytes) -> bool:
+    """Comprehensive binary file detection using multiple checks.
+
+    Args:
+        file_path: Path to the file (for MIME type check)
+        chunk: First bytes chunk of the file
+
+    Returns:
+        True if file is binary, False if text
+    """
+    # Layer 1: MIME type check (fast)
+    if _is_binary_by_mime(file_path):
+        return True
+
+    # Layer 2: Content check (accurate)
+    if _is_binary_by_content(chunk):
+        return True
+
+    return False
+
+
+def _get_file_preview_from_content(
+    content: str, file_size: int, max_lines: int = PREVIEW_LINES
+) -> str:
+    """Generate a preview from decoded content string.
+
+    Args:
+        content: Decoded file content
+        file_size: File size in bytes
+        max_lines: Number of lines to show from head and tail
+
+    Returns:
+        Preview string with file metadata and content preview
+    """
+    lines = content.splitlines(keepends=True)
+    total_lines = len(lines)
+
+    # Extract head and tail lines
+    head_lines = lines[:max_lines]
+    head_lines_str = "".join(head_lines).rstrip("\n")
+
+    tail_lines = []
+    if total_lines > max_lines * 2:
+        tail_lines = lines[-max_lines:]
+        tail_lines_str = "".join(tail_lines).rstrip("\n")
+    else:
+        tail_lines_str = ""
+
+    # Build preview
+    size_mb = file_size / 1024 / 1024
+    preview_parts = [
+        "# File too large for complete reading",
+        f"# Size: {file_size:,} bytes ({size_mb:.2f} MB)",
+        f"# Lines: {total_lines:,}",
+        f"# Showing preview (first {len(head_lines)} and last {len(tail_lines)} lines):",
+        "",
+        head_lines_str,
+    ]
+
+    if tail_lines:
+        omitted_lines = total_lines - len(head_lines) - len(tail_lines)
+        preview_parts.append(f"\n# ... ({omitted_lines:,} lines omitted) ...\n")
+        preview_parts.append(tail_lines_str)
+
+    return "\n".join(preview_parts)
+
+
+def read_file(
+    file_path: str, encoding: str = "utf-8", max_size: int = DEFAULT_MAX_FILE_SIZE
+) -> str:
+    """
+    Read the content of a text file.
+
+    This function can only read text files. Binary files (like images, PDFs, executables) will be rejected.
+    For files larger than 1MB, a preview with the first and last 50 lines will be returned instead.
+
+    Args:
+        file_path: Path to the text file you want to read
+        encoding: Text encoding format (default: utf-8). Most text files use utf-8.
+        max_size: Maximum file size in bytes (default: 1,048,576 = 1MB).
+
+    Returns:
+        - For small files (≤1MB): The complete file content as text
+        - For large files (>1MB): A preview showing the first and last 50 lines with file metadata
+    """
+    # Step 1: Quick MIME check (no file I/O)
+    if _is_binary_by_mime(file_path):
+        raise ValueError(
+            f"Cannot read binary file: {file_path}. This tool only supports text files."
+        )
+
+    # Step 2: Open file ONCE in binary mode for all checks
+    with open(file_path, "rb") as f:
+        # Read first chunk for safety checks
+        chunk = f.read(8192)
+
+        # Binary file detection (MIME + content checks)
+        if _is_binary_file(file_path, chunk):
+            raise ValueError(
+                f"Cannot read binary file: {file_path}. This tool only supports text files."
+            )
+
+        # Get file size
+        file_size = os.path.getsize(file_path)
+
+        # Check if file exceeds size limit
+        if file_size > max_size:
+            # File is too large - read all content and generate preview
+            f.seek(0)  # Seek back to beginning
+            content = f.read().decode(encoding, errors="ignore")
+            return _get_file_preview_from_content(content, file_size, PREVIEW_LINES)
+
+        # File is within size limit - read and decode full content
+        f.seek(0)  # Seek back to beginning
+        return f.read().decode(encoding)
 
 
 def write_file(
