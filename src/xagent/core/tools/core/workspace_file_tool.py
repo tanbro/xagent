@@ -195,9 +195,9 @@ class WorkspaceFileOperations:
         """
         Read the content of a text file from the workspace.
 
-        This function can only read text files. Binary files (like images, PDFs, executables) will be rejected.
+        This function can only read text files. Binary files (like images, executables) will be rejected.
         Document files (PDF, DOCX, XLSX, etc.) will be automatically parsed to extract text content.
-        For files larger than 1MB, a preview with the first and last 50 lines will be returned instead.
+        For files larger than 1MB, a preview with the first 100 lines will be returned instead.
 
         The file path is searched in this order:
         1. Input directory (for user-uploaded files)
@@ -209,7 +209,7 @@ class WorkspaceFileOperations:
 
         Returns:
             - For small files (≤1MB): The complete file content as text
-            - For large files (>1MB): A preview showing the first and last 50 lines with file metadata
+            - For large files (>1MB): A preview showing the first 100 lines with file metadata
             - For documents: Extracted text content
         """
         logger.debug(
@@ -257,14 +257,7 @@ class WorkspaceFileOperations:
 
         logger.debug("Reading file: %s", resolved_path)
 
-        # Step 1: Quick MIME check (no file I/O)
-        if _is_binary_by_mime(str(resolved_path)):
-            raise ValueError(
-                f"Cannot read binary file: {file_path}. "
-                f"This tool only supports text files."
-            )
-
-        # Step 2: Check if this is a document file that requires special parsing
+        # Step 1: Check if this is a document file that requires special parsing
         # (Document files bypass binary checks and go directly to parser)
         if is_document_file(str(resolved_path)):
             logger.debug("Detected document file, using document parser")
@@ -275,6 +268,13 @@ class WorkspaceFileOperations:
                 resolved_path,
             )
             return content
+
+        # Step 2: Quick MIME check (no file I/O)
+        if _is_binary_by_mime(str(resolved_path)):
+            raise ValueError(
+                f"Cannot read binary file: {file_path}. "
+                f"This tool only supports text files."
+            )
 
         # Step 3: Open file ONCE in binary mode for all checks and reading
         with open(resolved_path, "rb") as f:
