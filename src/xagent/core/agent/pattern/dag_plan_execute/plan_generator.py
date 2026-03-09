@@ -647,8 +647,22 @@ class PlanGenerator:
                     )
                 tools_context += f"- {tool_name}: {tool_description}\n"
 
-        # Build system prompt
-        system_prompt = """You are an intelligent task assistant. Analyze the user's input and decide:
+        # Build system prompt - IMPORTANT: Agent instructions come FIRST as they are the highest priority constraints
+        system_prompt_parts = []
+
+        # 1. Agent's instructions (HIGHEST PRIORITY - defines agent behavior and critical constraints)
+        if context and context.state.get("system_prompt"):
+            system_prompt_parts.append(
+                f"""## AGENT INSTRUCTIONS (CRITICAL - MUST FOLLOW ABOVE ALL ELSE):
+{context.state["system_prompt"]}
+
+---
+"""
+            )
+
+        # 2. General classification guidance
+        system_prompt_parts.append(
+            """You are an intelligent task assistant. Analyze the user's input and decide:
 
 1. **Direct Answer (type: "chat")** - If the user asks a simple question that you can answer directly without executing any tasks
 2. **Need Clarification (type: "chat")** - If you need more information to help the user effectively
@@ -706,10 +720,25 @@ class PlanGenerator:
 - timeout: Use 60 seconds ONLY if the task can proceed with default assumptions when the user does nothing (auto-continuation).
 - **STRICT RULE**: If the task CANNOT proceed without specific user input or file upload (e.g., mandatory missing information), you MUST NOT include a "timeout".
 - If you previously asked for input with a timeout, and the user replied "Continue" (auto-continued) but you still lack the mandatory info, ask again WITHOUT a timeout.
+---
 """
+        )
 
+        # 3. Skill context (detailed documentation from selected skill)
+        if skill_context:
+            system_prompt_parts.append(
+                f"""## SKILL CONTEXT (Detailed skill documentation and guidelines):
+{skill_context}
+---
+"""
+            )
+
+        # 4. Available tools
         if tools_context:
-            system_prompt += f"\n{tools_context}\n"
+            system_prompt_parts.append(tools_context)
+
+        # Combine all parts
+        system_prompt = "\n".join(system_prompt_parts)
 
         # Build messages list with history
         messages = [{"role": "system", "content": system_prompt}]
