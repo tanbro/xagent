@@ -123,6 +123,7 @@ async def create_default_tools(
     allowed_skills: Optional[List[str]] = None,
     allowed_tools: Optional[List[str]] = None,
     excluded_agent_id: Optional[int] = None,
+    vision_model: Optional[Any] = None,
 ) -> tuple[list[Any], Any]:
     """Create default tools and tool_config for AgentService using ToolFactory"""
     if not user:
@@ -148,6 +149,7 @@ async def create_default_tools(
         allowed_collections=allowed_collections,  # Agent Builder knowledge bases
         allowed_skills=allowed_skills,  # Agent Builder skills
         allowed_tools=allowed_tools,  # Agent Builder tool categories
+        vision_model=vision_model,  # Pass task-specific vision model
     )
 
     # Store excluded_agent_id in tool_config for agent tool filtering
@@ -561,7 +563,7 @@ class AgentServiceManager:
                         workspace_config=None,
                         include_mcp_tools=False,
                         task_id=None,
-                        browser_tools_enabled=False,
+                        browser_tools_enabled=True,
                         allowed_collections=agent_config.get("knowledge_bases"),
                         allowed_skills=agent_config.get("skills"),
                     )
@@ -596,6 +598,7 @@ class AgentServiceManager:
                     allowed_skills=agent_config["skills"] if agent_config else None,
                     allowed_tools=allowed_tools,
                     excluded_agent_id=excluded_agent_id,
+                    vision_model=task_vision_llm,  # Pass task-specific vision model
                 )
 
                 with UserContext(int(user.id)):
@@ -632,8 +635,16 @@ class AgentServiceManager:
                     tools_list, tool_config = tools
 
                     # Get system prompt from agent config (if available)
+                    from .agents import enhance_system_prompt_with_kb
+
                     system_prompt = (
                         agent_config.get("instructions") if agent_config else None
+                    )
+                    kb_list = (
+                        agent_config.get("knowledge_bases") if agent_config else None
+                    )
+                    system_prompt = enhance_system_prompt_with_kb(
+                        system_prompt, kb_list
                     )
 
                     # Create AgentService first (this creates the workspace)

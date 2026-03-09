@@ -45,6 +45,7 @@ from ..trace import (
     trace_task_end,
     trace_task_start,
     trace_tool_execution_start,
+    trace_user_message,
 )
 from ..utils.compact import CompactConfig, CompactUtils
 from ..utils.llm_utils import clean_messages
@@ -52,6 +53,9 @@ from .base import AgentPattern
 from .memory_utils import enhance_goal_with_memory, store_react_task_memory
 
 logger = logging.getLogger(__name__)
+
+CONTEXT_KEY_FILE_INFO = "file_info"
+CONTEXT_KEY_UPLOADED_FILES = "uploaded_files"
 
 
 class ReActStepType(Enum):
@@ -512,6 +516,33 @@ class ReActPattern(AgentPattern):
         self._interrupt_event.set()
         logger.info("ReAct execution interrupted")
 
+    def _populate_trace_data(
+        self,
+        trace_data: Dict[str, Any],
+        target_key: str,
+        context: Any,
+        context_dict: Dict[str, Any],
+        source_key: str,
+    ) -> None:
+        """
+        Helper to populate trace data from context or context state.
+
+        Args:
+            trace_data: The trace data dictionary to populate
+            target_key: The key to set in trace_data
+            context: The context object
+            context_dict: Dictionary representation of context
+            source_key: The key to look for in context
+        """
+        if source_key in context_dict:
+            trace_data[target_key] = context_dict[source_key]
+        elif (
+            hasattr(context, "state")
+            and isinstance(context.state, dict)
+            and source_key in context.state
+        ):
+            trace_data[target_key] = context.state[source_key]
+
     async def run(
         self,
         task: str,
@@ -543,6 +574,48 @@ class ReActPattern(AgentPattern):
 
         # Trace task start
         task_id = f"react_{context.task_id if context else uuid4()}"
+
+        # Emit user message trace if this is the main agent
+        if not self.is_sub_agent:
+            # Use original task_id for user message to ensure it matches the task
+            user_msg_task_id = (
+                str(context.task_id)
+                if context and hasattr(context, "task_id") and context.task_id
+                else task_id
+            )
+
+            trace_data: Dict[str, Any] = {}
+            if context:
+                context_dict = {}
+                if hasattr(context, "to_dict"):
+                    context_dict = context.to_dict()
+                elif hasattr(context, "dict"):
+                    context_dict = context.dict()
+                elif isinstance(context, dict):
+                    context_dict = context
+
+                # Check for file info in context
+                self._populate_trace_data(
+                    trace_data,
+                    "files",
+                    context,
+                    context_dict,
+                    CONTEXT_KEY_FILE_INFO,
+                )
+                self._populate_trace_data(
+                    trace_data,
+                    CONTEXT_KEY_UPLOADED_FILES,
+                    context,
+                    context_dict,
+                    CONTEXT_KEY_UPLOADED_FILES,
+                )
+
+            await trace_user_message(
+                self.tracer,
+                user_msg_task_id,
+                task,
+                trace_data,
+            )
 
         # For standalone React execution, create a virtual step context
         if not hasattr(self, "_current_step_id") or not self._current_step_id:
@@ -1314,17 +1387,13 @@ Failed final answer:
             "messages": final_messages,
         }
 
-        # Only add tools if available (tools exist)
+        # Get tool schemas for tracing (but don't pass to LLM)
+        # In JSON instruction mode, LLM returns JSON text describing the action,
+        # not actual tool calls. The code then parses the JSON and executes tools.
         tool_schemas = self.tool_registry.get_tool_schemas()
 
-        if tool_schemas:
-            chat_kwargs["tools"] = tool_schemas
-            chat_kwargs["tool_choice"] = "auto"
-            # Enforce JSON format for all LLMs including Gemini
-            chat_kwargs["response_format"] = {"type": "json_object"}
-        else:
-            # No tools - enforce JSON format for all LLMs
-            chat_kwargs["response_format"] = {"type": "json_object"}
+        # Enforce JSON format for all LLMs
+        chat_kwargs["response_format"] = {"type": "json_object"}
 
         # Disable thinking mode if supported
         if (
