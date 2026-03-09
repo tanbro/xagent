@@ -532,8 +532,58 @@ class DAGPlanExecutePattern(AgentPattern):
                     # Add user message to conversation history (before analyze_goal)
                     self._add_user_message(task)
 
-                    # FIRST: Call should_chat_directly to determine if we should chat or plan
-                    # This happens BEFORE memory/skill selection to avoid unnecessary work
+                    # FIRST: Select skill (if available) to inform the chat/plan decision
+                    # This ensures should_chat_directly can make an informed decision
+                    skill_task = None
+                    skill_context = None
+
+                    if self.skill_manager:
+                        # Trace skill selection start
+                        skill_task_id = f"dag_plan_skill_{int(time.time())}"
+                        logger.info(f"🔍 Selecting skill for task: {task[:100]}...")
+                        logger.info(f"🔍 skill_manager: {self.skill_manager}")
+                        logger.info(f"🔍 allowed_skills: {self.allowed_skills}")
+                        skill_task = self.skill_manager.select_skill(
+                            task,
+                            self.llm,
+                            tracer=self.tracer,
+                            task_id=skill_task_id,
+                            allowed_skills=self.allowed_skills,
+                        )
+                        logger.info(f"🔍 Skill selection task created: {skill_task}")
+                    else:
+                        logger.warning(
+                            "⚠️ skill_manager is None, skipping skill selection"
+                        )
+
+                    # Wait for skill selection to complete
+                    if skill_task:
+                        try:
+                            skill_result = await skill_task
+                            if skill_result and not isinstance(skill_result, Exception):
+                                # Type narrowing: we know skill_result is the actual result, not Exception
+                                skill: Dict[str, Any] = skill_result
+                                if skill:
+                                    skill_context = (
+                                        self.plan_generator._build_skill_context(skill)
+                                    )
+                                    self._skill_context = (
+                                        skill_context  # Store for execution phase
+                                    )
+                                    logger.info(f"✅ Using skill: {skill['name']}")
+                                    logger.debug(
+                                        f"📚 Skill context length: {len(skill_context)} chars"
+                                    )
+                                else:
+                                    logger.info("⚠️ No relevant skill found")
+                            elif skill_result and isinstance(skill_result, Exception):
+                                logger.warning(
+                                    f"❌ Skill selection failed: {skill_result}"
+                                )
+                        except Exception as e:
+                            logger.warning(f"❌ Skill selection error: {e}")
+
+                    # THEN: Call should_chat_directly with skill context
                     result = await self.plan_generator.should_chat_directly(
                         goal=task,
                         tools=tools,
@@ -541,6 +591,7 @@ class DAGPlanExecutePattern(AgentPattern):
                         history=self._get_messages_for_llm(),
                         tracer=self.tracer,
                         context=self._context,
+                        skill_context=skill_context,
                     )
 
                     # Check if LLM decided to return a chat response instead of generating a plan
@@ -625,12 +676,13 @@ class DAGPlanExecutePattern(AgentPattern):
                         }
 
                     # If we reach here, LLM decided to generate a plan
-                    # Now proceed with memory and skill selection for plan generation
+                    # Now proceed with memory lookup (skill already selected above)
                     enhanced_task = task
-                    skill_context = None
+                    # skill_context is already set from earlier skill selection
 
                     # Create parallel tasks
                     memory_task = None
+                    # Skip skill selection since we already did it above
                     skill_task = None
 
                     if self.memory_store:
@@ -664,28 +716,9 @@ class DAGPlanExecutePattern(AgentPattern):
                             user_id=user_id,
                         )
 
-                    if self.skill_manager:
-                        # Trace skill selection start
-                        skill_task_id = f"dag_plan_skill_{int(time.time())}"
-                        logger.info(f"🔍 Selecting skill for task: {task[:100]}...")
-                        logger.info(f"🔍 skill_manager: {self.skill_manager}")
-                        logger.info(f"🔍 allowed_skills: {self.allowed_skills}")
-                        skill_task = self.skill_manager.select_skill(
-                            task,
-                            self.llm,
-                            tracer=self.tracer,
-                            task_id=skill_task_id,
-                            allowed_skills=self.allowed_skills,
-                        )
-                        logger.info(f"🔍 Skill selection task created: {skill_task}")
-                    else:
-                        logger.warning(
-                            "⚠️ skill_manager is None, skipping skill selection"
-                        )
-
-                    # Execute memory and skill queries in parallel
+                    # Execute memory query (skill already selected above)
                     results = await asyncio.gather(
-                        *filter(None, [memory_task, skill_task]),
+                        *filter(None, [memory_task]),
                         return_exceptions=True,
                     )
 
@@ -718,32 +751,7 @@ class DAGPlanExecutePattern(AgentPattern):
                                 },
                             )
 
-                    # Process skill result
-                    skill_result = (
-                        results[1]
-                        if memory_task and skill_task and len(results) > 1
-                        else results[0]
-                        if skill_task and len(results) > 0
-                        else None
-                    )
-                    if skill_result and not isinstance(skill_result, Exception):
-                        # Type narrowing: we know skill_result is the actual result, not Exception
-                        skill: Dict[str, Any] = skill_result  # type: ignore[assignment]
-                        if skill:
-                            skill_context = self.plan_generator._build_skill_context(
-                                skill
-                            )
-                            self._skill_context = (
-                                skill_context  # Store for execution phase
-                            )
-                            logger.info(f"✅ Using skill: {skill['name']}")
-                            logger.debug(
-                                f"📚 Skill context length: {len(skill_context)} chars"
-                            )
-                        else:
-                            logger.info("⚠️ No relevant skill found")
-                    elif skill_result and isinstance(skill_result, Exception):
-                        logger.warning(f"❌ Skill selection failed: {skill_result}")
+                    # skill_context is already set from earlier skill selection above
 
                     logger.info(
                         f"🎯 Generating plan with {len(tools)} tools available..."

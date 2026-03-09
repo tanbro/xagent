@@ -492,6 +492,7 @@ class PlanGenerator:
         history: List[Dict[str, Any]],
         tracer: Any,
         context: Optional[AgentContext] = None,
+        skill_context: Optional[str] = None,
     ) -> PlanGeneratorResult:
         """
         Quick check if the goal can be answered directly without planning.
@@ -511,9 +512,9 @@ class PlanGenerator:
                 f"[should_chat_directly] Agent context: {type(context).__name__}"
             )
 
-        # Build classification prompt (no skill context needed for quick check)
+        # Build classification prompt with skill context if available
         messages = self._build_classification_prompt(
-            goal, history, tools, context, skill_context=None
+            goal, history, tools, context, skill_context=skill_context
         )
         logger.info(
             f"[should_chat_directly] Built prompt with {len(messages)} messages"
