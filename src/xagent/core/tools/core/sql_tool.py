@@ -1,13 +1,14 @@
 """
-SQL Tool for xagent - Async SQL execution using SQLAlchemy
+SQL Tool for xagent - SQL execution using SQLAlchemy
 
 Database connections are configured via environment variables, not raw URLs.
 Connection format: XAGENT_DB_<NAME>=<connection_url>
 
 Example:
-    XAGENT_DB_ANALYTICS=postgresql+asyncpg://user:pass@localhost:5432/analytics
-    XAGENT_DB_PROD=mysql+aiomysql://user:pass@localhost:3306/production
-    XAGENT_DB_LOCAL=sqlite+aiosqlite:///path/to/database.db
+    XAGENT_DB_ANALYTICS=postgresql://user:pass@localhost:5432/analytics
+    XAGENT_DB_PROD=mysql://user:pass@localhost:3306/production
+    XAGENT_DB_LOCAL=sqlite:///path/to/database.db
+    XAGENT_DB_DUCKDB=duckdb:///path/to/database.duckdb
 """
 
 import csv
@@ -18,9 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import URL, text
-from sqlalchemy.engine import Row, make_url
-from sqlalchemy.ext.asyncio import AsyncResult, create_async_engine
+from sqlalchemy import URL, create_engine, text
+from sqlalchemy.engine import CursorResult, Row, make_url
 
 if TYPE_CHECKING:
     from ...workspace import TaskWorkspace
@@ -47,7 +47,6 @@ class SQLQueryResult(BaseModel):
         default_factory=list, description="Column names in result set"
     )
     message: str = Field(default="", description="Summary of what happened")
-    error: str = Field(default="", description="Error message if execution failed")
 
 
 def _get_connection_url(connection_name: str) -> URL:
@@ -59,7 +58,7 @@ def _get_connection_url(connection_name: str) -> URL:
         connection_name: Name of the connection (case-insensitive)
 
     Returns:
-        Connection URL if found, None otherwise
+        Connection URL if found
     """
     env_key = f"XAGENT_DB_{connection_name.upper()}"
     url = os.getenv(env_key)
@@ -82,24 +81,7 @@ def _get_connection_url(connection_name: str) -> URL:
             )
 
     # Validate URL format using SQLAlchemy
-    parsed_url = make_url(url)
-    drivername = parsed_url.drivername
-
-    # Ensure async driver is being used
-    if drivername == "postgresql" and "+" not in drivername:
-        raise ValueError(
-            f"Connection '{connection_name}' must use async driver (postgresql+asyncpg://), got: {drivername}"
-        )
-    elif drivername == "mysql" and "+" not in drivername:
-        raise ValueError(
-            f"Connection '{connection_name}' must use async driver (mysql+aiomysql://), got: {drivername}"
-        )
-    elif drivername == "sqlite" and "+" not in drivername:
-        raise ValueError(
-            f"Connection '{connection_name}' must use async driver (sqlite+aiosqlite:///), got: {drivername}"
-        )
-
-    return parsed_url
+    return make_url(url)
 
 
 def _row_to_dict(row: Row) -> dict[str, Any]:
@@ -107,7 +89,7 @@ def _row_to_dict(row: Row) -> dict[str, Any]:
     return dict(row._mapping)
 
 
-async def execute_sql_query(
+def execute_sql_query(
     connection_name: str,
     query: str,
     output_file: Optional[str] = None,
@@ -126,156 +108,135 @@ async def execute_sql_query(
     Returns:
         dict:
             with keys:
-            - success: true if query worked, false if it failed
+            - success: true if query worked
             - rows: query results as list of dicts (SELECT only, empty when exported)
             - row_count: number of rows returned or affected
             - columns: column names in the result
             - message: what happened
-            - error: error details if success is false
     """
     # Get connection URL from environment
+    url = _get_connection_url(connection_name)
+    stmt = text(query)
+    engine = create_engine(url)
+
     try:
-        url = _get_connection_url(connection_name)
-        stmt = text(query)
-        engine = create_async_engine(url)
-
-        try:
-            async with engine.connect() as conn:
-                # Check if export to file is requested first
-                if output_file and workspace:
-                    file_ext = Path(output_file).suffix.lower()
-                    if file_ext == ".csv":
-                        # Async streaming export for large datasets
-                        stream_result = await conn.stream(stmt)
-                        _, exported_count, columns = await _async_stream_export_to_csv(
-                            workspace, output_file, stream_result
-                        )
-                        return SQLQueryResult(
-                            success=True,
-                            rows=[],
-                            row_count=exported_count,
-                            columns=columns,
-                            message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
-                        ).model_dump()
-                    elif file_ext == ".parquet":
-                        # Async streaming export with Parquet (better compression & type preservation)
-                        stream_result = await conn.stream(stmt)
-                        (
-                            _,
-                            exported_count,
-                            columns,
-                        ) = await _async_stream_export_to_parquet(
-                            workspace, output_file, stream_result
-                        )
-                        return SQLQueryResult(
-                            success=True,
-                            rows=[],
-                            row_count=exported_count,
-                            columns=columns,
-                            message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
-                        ).model_dump()
-                    elif file_ext in (".json", ".jsonl", ".ndjson"):
-                        # Async streaming JSON Lines (NDJSON) export
-                        stream_result = await conn.stream(stmt)
-                        (
-                            _,
-                            exported_count,
-                            columns,
-                        ) = await _async_stream_export_to_jsonlines(
-                            workspace, output_file, stream_result
-                        )
-                        return SQLQueryResult(
-                            success=True,
-                            rows=[],
-                            row_count=exported_count,
-                            columns=columns,
-                            message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
-                        ).model_dump()
-                    else:
-                        raise ValueError(
-                            f"Unsupported file format: {file_ext}. "
-                            f"Supported: .csv (async streaming), .parquet (async streaming), .json/.jsonl/.ndjson (async streaming JSON Lines)"
-                        )
-
-                # Original behavior: return data in response
-                result = await conn.execute(stmt)
-
-                # Get column names from result
-                if result.returns_rows:
-                    rows = result.all()
-                    row_list = [_row_to_dict(row) for row in rows]
-
-                    # Extract column names from first row
-                    columns = list(row_list[0].keys()) if row_list else []
-
-                    return SQLQueryResult(
-                        success=True,
-                        rows=row_list,
-                        row_count=len(row_list),
-                        columns=columns,
-                        message=f"Query executed successfully on '{connection_name}', returned {len(row_list)} row(s)",
-                    ).model_dump()
-                else:
-                    # For INSERT, UPDATE, DELETE operations
-                    rowcount = result.rowcount if hasattr(result, "rowcount") else 0
-
-                    # Commit the transaction for non-SELECT queries
-                    await conn.commit()
-
+        with engine.connect() as conn:
+            # Check if export to file is requested first
+            if output_file and workspace:
+                file_ext = Path(output_file).suffix.lower()
+                if file_ext == ".csv":
+                    # Streaming export for large datasets
+                    result = conn.execute(stmt)
+                    _, exported_count, columns = _stream_export_to_csv(
+                        workspace, output_file, result
+                    )
                     return SQLQueryResult(
                         success=True,
                         rows=[],
-                        row_count=rowcount,
-                        columns=[],
-                        message=f"Query executed successfully on '{connection_name}', affected {rowcount} row(s)",
+                        row_count=exported_count,
+                        columns=columns,
+                        message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
                     ).model_dump()
+                elif file_ext == ".parquet":
+                    # Streaming export with Parquet (better compression & type preservation)
+                    result = conn.execute(stmt)
+                    (
+                        _,
+                        exported_count,
+                        columns,
+                    ) = _stream_export_to_parquet(workspace, output_file, result)
+                    return SQLQueryResult(
+                        success=True,
+                        rows=[],
+                        row_count=exported_count,
+                        columns=columns,
+                        message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
+                    ).model_dump()
+                elif file_ext in (".json", ".jsonl", ".ndjson"):
+                    # Streaming JSON Lines (NDJSON) export
+                    result = conn.execute(stmt)
+                    (
+                        _,
+                        exported_count,
+                        columns,
+                    ) = _stream_export_to_jsonlines(workspace, output_file, result)
+                    return SQLQueryResult(
+                        success=True,
+                        rows=[],
+                        row_count=exported_count,
+                        columns=columns,
+                        message=f"Query executed successfully on '{connection_name}', exported {exported_count} row(s) to {output_file}",
+                    ).model_dump()
+                else:
+                    raise ValueError(
+                        f"Unsupported file format: {file_ext}. "
+                        f"Supported: .csv (streaming), .parquet (streaming), .json/.jsonl/.ndjson (streaming JSON Lines)"
+                    )
 
-        finally:
-            await engine.dispose()
+            # Original behavior: return data in response
+            result = conn.execute(stmt)
 
-    except Exception as e:
-        logger.error(
-            f"SQL execution error on connection '{connection_name}': {e}", exc_info=True
-        )
+            # Get column names from result
+            if result.returns_rows:
+                rows = result.all()
+                row_list = [_row_to_dict(row) for row in rows]
 
-        # Return error in LLM-friendly format
-        return SQLQueryResult(
-            success=False,
-            rows=[],
-            row_count=0,
-            columns=[],
-            message=f"Query execution failed on connection '{connection_name}'",
-            error=str(e),
-        ).model_dump()
+                # Extract column names from first row
+                columns = list(row_list[0].keys()) if row_list else []
+
+                return SQLQueryResult(
+                    success=True,
+                    rows=row_list,
+                    row_count=len(row_list),
+                    columns=columns,
+                    message=f"Query executed successfully on '{connection_name}', returned {len(row_list)} row(s)",
+                ).model_dump()
+            else:
+                # For INSERT, UPDATE, DELETE operations
+                rowcount = result.rowcount if hasattr(result, "rowcount") else 0
+
+                # Commit the transaction for non-SELECT queries
+                conn.commit()
+
+                return SQLQueryResult(
+                    success=True,
+                    rows=[],
+                    row_count=rowcount,
+                    columns=[],
+                    message=f"Query executed successfully on '{connection_name}', affected {rowcount} row(s)",
+                ).model_dump()
+    finally:
+        engine.dispose()
 
 
-async def _async_stream_export_to_csv(
+def _stream_export_to_csv(
     workspace: "TaskWorkspace",
     file_path: str,
-    result: AsyncResult,
+    result: CursorResult,
     batch_size: int = 1000,
 ) -> tuple[str, int, list[str]]:
-    """Async streaming export to CSV using conn.stream() with partitions().
-
-    Uses partitions() to fetch pre-buffered rows in batches, reducing iteration
-    overhead while maintaining non-blocking async behavior.
+    """Streaming export to CSV.
 
     Returns:
         Tuple of (exported_file_path, row_count, column_names)
     """
     resolved_path = workspace.resolve_path(file_path, default_dir="output")
 
-    # Get column names BEFORE iteration (result may be closed after)
+    # Get column names BEFORE iteration
     columns = list(result.keys())
 
     row_count = 0
     writer: csv.DictWriter | None = None
 
     with open(resolved_path, "w", encoding="utf-8", newline="") as f:
-        # partitions() yields batches of pre-buffered rows (async, non-blocking)
-        async for partition in result.partitions(batch_size):
+        # Fetch in batches
+        while True:
+            batch = result.fetchmany(batch_size)
+            if not batch:
+                break
+
             # Convert batch to dict format
-            batch_dicts = [_row_to_dict(row) for row in partition]
+            batch_dicts = [_row_to_dict(row) for row in batch]
 
             # Initialize writer on first batch
             if writer is None:
@@ -285,37 +246,38 @@ async def _async_stream_export_to_csv(
             # Write batch to file
             if writer is not None:
                 writer.writerows(batch_dicts)
-            row_count += len(batch_dicts)
+            row_count += len(batch)
 
     return str(resolved_path), row_count, columns
 
 
-async def _async_stream_export_to_jsonlines(
+def _stream_export_to_jsonlines(
     workspace: "TaskWorkspace",
     file_path: str,
-    result: AsyncResult,
+    result: CursorResult,
     batch_size: int = 1000,
 ) -> tuple[str, int, list[str]]:
-    """Async streaming export to JSON Lines (NDJSON) using conn.stream() with partitions().
-
-    Uses partitions() to fetch pre-buffered rows in batches for efficient async streaming.
-    Each row is written as a separate JSON object on its own line.
+    """Streaming export to JSON Lines (NDJSON).
 
     Returns:
         Tuple of (exported_file_path, row_count, column_names)
     """
     resolved_path = workspace.resolve_path(file_path, default_dir="output")
 
-    # Get column names BEFORE iteration (result may be closed after)
+    # Get column names BEFORE iteration
     columns = list(result.keys())
 
     row_count = 0
 
     with open(resolved_path, "w", encoding="utf-8") as f:
-        # partitions() yields batches of pre-buffered rows (async, non-blocking)
-        async for partition in result.partitions(batch_size):
+        # Fetch in batches
+        while True:
+            batch = result.fetchmany(batch_size)
+            if not batch:
+                break
+
             # Convert batch to JSON lines and write
-            for row in partition:
+            for row in batch:
                 row_dict = _row_to_dict(row)
                 print(json.dumps(row_dict, ensure_ascii=False), file=f)
                 row_count += 1
@@ -323,15 +285,14 @@ async def _async_stream_export_to_jsonlines(
     return str(resolved_path), row_count, columns
 
 
-async def _async_stream_export_to_parquet(
+def _stream_export_to_parquet(
     workspace: "TaskWorkspace",
     file_path: str,
-    result: AsyncResult,
+    result: CursorResult,
     batch_size: int = 5000,
 ) -> tuple[str, int, list[str]]:
-    """Async streaming export to Parquet using conn.stream() with partitions().
+    """Streaming export to Parquet.
 
-    Uses partitions() to fetch pre-buffered rows in batches for efficient async streaming.
     Parquet provides excellent compression and preserves data types.
 
     Returns:
@@ -348,16 +309,20 @@ async def _async_stream_export_to_parquet(
 
     resolved_path = workspace.resolve_path(file_path, default_dir="output")
 
-    # Get column names BEFORE iteration (result may be closed after)
+    # Get column names BEFORE iteration
     columns = list(result.keys())
 
     row_count = 0
     writer = None
 
-    # partitions() yields batches of pre-buffered rows (async, non-blocking)
-    async for partition in result.partitions(batch_size):
+    # Fetch in batches
+    while True:
+        batch = result.fetchmany(batch_size)
+        if not batch:
+            break
+
         # Convert batch to dict format
-        batch_dicts = [_row_to_dict(row) for row in partition]
+        batch_dicts = [_row_to_dict(row) for row in batch]
 
         # Create Arrow Table from batch
         table = pa.Table.from_pylist(batch_dicts)
@@ -368,7 +333,7 @@ async def _async_stream_export_to_parquet(
 
         # Write batch to file
         writer.write_table(table)
-        row_count += len(batch_dicts)
+        row_count += len(batch)
 
     # Close writer to finalize file
     if writer:

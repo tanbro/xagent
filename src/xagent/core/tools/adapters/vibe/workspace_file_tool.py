@@ -24,6 +24,12 @@ class FileTool(FunctionTool):
     category = ToolCategory.FILE
 
 
+class SkillFileTool(FunctionTool):
+    """Base class for skill file tools with SKILL category."""
+
+    category = ToolCategory.SKILL
+
+
 class WorkspaceFileTools(WorkspaceFileOperations):
     """
     Workspace-bound file tools.
@@ -32,17 +38,24 @@ class WorkspaceFileTools(WorkspaceFileOperations):
     file operations restricted to that workspace.
     """
 
-    def __init__(self, workspace: TaskWorkspace, skills_root: str = ".xagent/skills"):
+    def __init__(
+        self, workspace: TaskWorkspace, skills_root: str | list[str] = ".xagent/skills"
+    ):
         """
         Initialize with workspace binding.
 
         Args:
             workspace: The workspace to bind to
             skills_root: Root directory for skills (default: .xagent/skills)
+                        Can be a single path or list of paths for multiple skill directories
         """
         self.inner = WorkspaceFileOperations(workspace)
         self.workspace = workspace
-        self.skills_root = skills_root
+        # Support both single path and list of paths
+        if isinstance(skills_root, str):
+            self.skills_roots = [skills_root]
+        else:
+            self.skills_roots = skills_root
 
     def read_file(self, file_path: str, encoding: str = "utf-8") -> str:
         """Read file content in workspace"""
@@ -140,6 +153,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
 
         This allows accessing skill documentation (schema files, references, etc.)
         that are stored in the skill directory outside of the workspace.
+        Searches across all configured skill directories.
 
         Args:
             skill_name: Name of the skill
@@ -149,26 +163,51 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             File content as string
 
         Raises:
-            FileNotFoundError: If the skill file doesn't exist
+            FileNotFoundError: If the skill file doesn't exist in any skill directory
         """
 
-        skill_dir = Path(self.skills_root) / skill_name
-        full_path = skill_dir / file_path
+        # Search for skill in all configured roots
+        for skills_root in self.skills_roots:
+            skill_dir = Path(skills_root) / skill_name
+            full_path = skill_dir / file_path
 
-        if not full_path.exists():
-            # List available files for better error message
-            available_files = []
-            if skill_dir.exists():
-                for f in skill_dir.rglob("*"):
-                    if f.is_file():
-                        available_files.append(str(f.relative_to(skill_dir)))
+            if full_path.exists():
+                return full_path.read_text(encoding="utf-8")
 
-            raise FileNotFoundError(
-                f"File not found: '{file_path}' in skill '{skill_name}'\n"
-                f"Use list_skill_files('{skill_name}') to see available files."
+        # File not found in any directory - collect available files for error message
+        available_skills = []
+        available_files = []
+
+        for skills_root in self.skills_roots:
+            root_path = Path(skills_root)
+            if root_path.exists():
+                # List available skills
+                for skill_dir in root_path.iterdir():
+                    if skill_dir.is_dir():
+                        available_skills.append(skill_dir.name)
+                        # If this is the requested skill, list its files
+                        if skill_dir.name == skill_name:
+                            for f in skill_dir.rglob("*"):
+                                if f.is_file():
+                                    available_files.append(
+                                        str(f.relative_to(skill_dir))
+                                    )
+
+        error_msg = f"File not found: '{file_path}' in skill '{skill_name}'\n"
+        if available_files:
+            error_msg += f"Available files in '{skill_name}':\n  " + "\n  ".join(
+                available_files[:10]
             )
+            if len(available_files) > 10:
+                error_msg += f"\n  ... and {len(available_files) - 10} more"
+        else:
+            error_msg += f"Skill '{skill_name}' not found.\n"
+            error_msg += f"Available skills: {', '.join(available_skills[:10])}"
+            if len(available_skills) > 10:
+                error_msg += f" ... and {len(available_skills) - 10} more"
+        error_msg += f"\nUse list_skill_files('{skill_name}') to see available files."
 
-        return full_path.read_text(encoding="utf-8")
+        raise FileNotFoundError(error_msg)
 
     def list_skill_files(
         self,
@@ -181,6 +220,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
         List files in a skill directory.
 
         This allows discovering what reference/resource files are available in a skill.
+        Searches across all configured skill directories.
         Behavior matches list_files() for consistency.
 
         Args:
@@ -197,13 +237,30 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             - directory: The skill name
 
         Raises:
-            FileNotFoundError: If the skill directory doesn't exist
+            FileNotFoundError: If the skill directory doesn't exist in any skill directory
         """
-        skill_dir = Path(self.skills_root) / skill_name
+        # Search for skill in all configured roots
+        skill_dir = None
+        for skills_root in self.skills_roots:
+            candidate_dir = Path(skills_root) / skill_name
+            if candidate_dir.exists():
+                skill_dir = candidate_dir
+                break
 
-        if not skill_dir.exists():
+        if not skill_dir:
+            # Collect available skills for error message
+            available_skills = []
+            for skills_root in self.skills_roots:
+                root_path = Path(skills_root)
+                if root_path.exists():
+                    for skill_dir_item in root_path.iterdir():
+                        if skill_dir_item.is_dir():
+                            available_skills.append(skill_dir_item.name)
+
             raise FileNotFoundError(
                 f"Skill not found: '{skill_name}'\n"
+                f"Available skills: {', '.join(available_skills[:10])}"
+                f"{'' if len(available_skills) <= 10 else f' ... and {len(available_skills) - 10} more'}\n"
                 f"Please check the skill name is correct."
             )
 
@@ -336,7 +393,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
                 name="find_and_replace",
                 description="Convenience function to find and replace text content in workspace. Use relative paths (e.g., 'filename.txt'), not absolute paths.",
             ),
-            FunctionTool(
+            SkillFileTool(
                 self.read_skill_file,
                 name="read_skill_file",
                 tags=["skill"],
@@ -352,7 +409,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
     Note: If you don't know the exact file path, use list_skill_files() first to see available files.
 """,
             ),
-            FunctionTool(
+            SkillFileTool(
                 self.list_skill_files,
                 name="list_skill_files",
                 tags=["skill"],
@@ -382,7 +439,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
 
 
 def create_workspace_file_tools(
-    workspace: TaskWorkspace, skills_root: str = ".xagent/skills"
+    workspace: TaskWorkspace, skills_root: str | list[str] = ".xagent/skills"
 ) -> List[FunctionTool]:
     """
     Create list of file tools bound to specified workspace
@@ -390,6 +447,7 @@ def create_workspace_file_tools(
     Args:
         workspace: Workspace to bind to
         skills_root: Root directory for skills (default: .xagent/skills)
+                    Can be a single path or list of paths for multiple skill directories
 
     Returns:
         List of tool instances
@@ -417,7 +475,66 @@ async def create_file_tools(config: "BaseToolConfig") -> List[Any]:
         return []
 
     try:
-        return create_workspace_file_tools(workspace)
+        # Get all skills directories (built-in + user + external)
+        skills_roots = _get_all_skills_directories()
+        logger.info(f"📚 Skills directories for file tools: {skills_roots}")
+        return create_workspace_file_tools(workspace, skills_root=skills_roots)
     except Exception as e:
         logger.warning(f"Failed to create file tools: {e}")
         return []
+
+
+def _get_all_skills_directories() -> List[str]:
+    """
+    Get all skills directories (built-in, user, and external).
+
+    This mirrors the logic in xagent.skills.utils.create_skill_manager
+    to ensure skill file tools can access all skills.
+
+    Returns:
+        List of skills directory paths
+    """
+    import os
+    from pathlib import Path
+
+    skills_roots = []
+
+    # 1. Built-in skills directory
+    builtin_skills_dir = (
+        Path(__file__).parent.parent.parent.parent / "skills" / "builtin"
+    )
+    if builtin_skills_dir.exists():
+        skills_roots.append(str(builtin_skills_dir))
+        logger.debug(f"Added built-in skills directory: {builtin_skills_dir}")
+
+    # 2. User skills directory (.xagent/skills)
+    user_skills_dir = Path(".xagent/skills")
+    if user_skills_dir.exists():
+        skills_roots.append(str(user_skills_dir))
+        logger.debug(f"Added user skills directory: {user_skills_dir}")
+
+    # 3. External skills directories from environment variable
+    env_dirs = os.getenv("XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS", "")
+    if env_dirs:
+        for dir_path in env_dirs.split(","):
+            dir_path = dir_path.strip()
+            if not dir_path:
+                continue
+
+            # Skip URL-like paths
+            if "://" in dir_path:
+                logger.warning(f"Skipping non-local path: {dir_path}")
+                continue
+
+            # Expand environment variables and user home directory
+            expanded_path = os.path.expandvars(dir_path)
+            path = Path(expanded_path).expanduser()
+
+            # Validate and add path
+            if path.exists() and path.is_dir():
+                skills_roots.append(str(path))
+                logger.info(f"Added external skills directory: {path}")
+            else:
+                logger.warning(f"Skills directory does not exist: {path}")
+
+    return skills_roots

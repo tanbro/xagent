@@ -104,13 +104,14 @@ class ToolRegistry:
         1. BASIC - Basic tools (search, code execution)
         2. KNOWLEDGE - Knowledge base search
         3. FILE - File operations
-        4. VISION - Vision understanding
-        5. IMAGE - Image generation
-        6. BROWSER - Browser automation
-        7. PPT - PPT tools
-        8. MCP - MCP tools
-        9. AGENT - Agent tools (delegation)
-        10. OTHER - Other tools
+        4. SKILL - Skill file operations
+        5. VISION - Vision understanding
+        6. IMAGE - Image generation
+        7. BROWSER - Browser automation
+        8. PPT - PPT tools
+        9. MCP - MCP tools
+        10. AGENT - Agent tools (delegation)
+        11. OTHER - Other tools
         """
         from .base import ToolCategory
 
@@ -119,13 +120,14 @@ class ToolRegistry:
             ToolCategory.BASIC: 0,
             ToolCategory.KNOWLEDGE: 1,
             ToolCategory.FILE: 2,
-            ToolCategory.VISION: 3,
-            ToolCategory.IMAGE: 4,
-            ToolCategory.BROWSER: 5,
-            ToolCategory.PPT: 6,
-            ToolCategory.MCP: 7,
-            ToolCategory.AGENT: 8,
-            ToolCategory.OTHER: 9,
+            ToolCategory.SKILL: 3,
+            ToolCategory.VISION: 4,
+            ToolCategory.IMAGE: 5,
+            ToolCategory.BROWSER: 6,
+            ToolCategory.PPT: 7,
+            ToolCategory.MCP: 8,
+            ToolCategory.AGENT: 9,
+            ToolCategory.OTHER: 10,
         }
 
         def get_tool_priority(tool: Tool) -> int:

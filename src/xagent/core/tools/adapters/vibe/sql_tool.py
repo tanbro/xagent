@@ -33,12 +33,10 @@ class SqlQueryTool:
         """
         self._workspace = workspace
 
-    async def execute_sql_query(
+    def execute_sql_query(
         self, connection_name: str, query: str, output_file: Optional[str] = None
     ) -> dict[str, Any]:
-        return await execute_sql_query(
-            connection_name, query, output_file, self._workspace
-        )
+        return execute_sql_query(connection_name, query, output_file, self._workspace)
 
     def get_tools(self) -> list:
         """Get all tool instances."""
@@ -62,12 +60,14 @@ class SqlQueryTool:
 
                         Returns:
                             dict with keys:
-                            - success: true if query worked, false if it failed
+                            - success: true if query worked
                             - rows: query results as list of dicts (SELECT only, empty when exported)
                             - row_count: number of rows returned or affected
                             - columns: column names in the result
                             - message: what happened (includes export info when applicable)
-                            - error: error details if success is false
+
+                        Note: On error, exceptions are raised directly with full traceback
+                        for LLM to understand and debug the issue.
 
                 """),
                     "" * 4,
@@ -79,7 +79,7 @@ class SqlQueryTool:
                     "postgresql",
                     "mysql",
                     "sqlite",
-                    "async",
+                    "duckdb",
                 ],
             ),
         ]
