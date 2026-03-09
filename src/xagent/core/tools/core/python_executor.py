@@ -82,15 +82,8 @@ class PythonExecutorCore:
                 if capture_output:
                     output = output_buffer.getvalue()
 
-                # If no output but there are variables, show them
-                if not output and local_vars:
-                    visible_vars = {
-                        k: v for k, v in local_vars.items() if not k.startswith("_")
-                    }
-                    if visible_vars:
-                        output = "Variables created:\n"
-                        for name, value in visible_vars.items():
-                            output += f"{name} = {repr(value)}\n"
+                # Note: We no longer auto-print variables to avoid OOM and token overflow.
+                # Agent should explicitly print() what they need.
 
                 return {
                     "success": True,

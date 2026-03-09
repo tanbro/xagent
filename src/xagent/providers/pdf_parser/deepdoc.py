@@ -1,15 +1,10 @@
 import asyncio
+import importlib
 import logging
 import uuid
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-
-from deepdoc import ExcelParser as DeepDocExcelParser
-from deepdoc import MarkdownParser as DeepDocMarkdownParser
-from deepdoc import PdfParser as DeepDocPdfParser
-from deepdoc import TxtParser as DeepDocTxtParser
-from deepdoc.parser import DoclingParser as DeepDocDoclingParser
 
 from ...core.tools.core.RAG_tools.core.config import ARTIFACTS_DIR
 from ...core.tools.core.RAG_tools.utils.string_utils import sanitize_for_doc_id
@@ -27,6 +22,42 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _import_deepdoc_parser(parser_name: str) -> Any:
+    """Lazy import deepdoc parser classes.
+
+    Args:
+        parser_name: Name of the parser class to import
+
+    Returns:
+        The parser class
+
+    Raises:
+        ImportError: If deepdoc is not installed
+    """
+    try:
+        if parser_name == "PdfParser":
+            module = importlib.import_module("deepdoc")
+            return getattr(module, "PdfParser")
+        elif parser_name == "DoclingParser":
+            module = importlib.import_module("deepdoc.parser")
+            return getattr(module, "DoclingParser")
+        elif parser_name == "ExcelParser":
+            module = importlib.import_module("deepdoc")
+            return getattr(module, "ExcelParser")
+        elif parser_name == "MarkdownParser":
+            module = importlib.import_module("deepdoc")
+            return getattr(module, "MarkdownParser")
+        elif parser_name == "TxtParser":
+            module = importlib.import_module("deepdoc")
+            return getattr(module, "TxtParser")
+        else:
+            raise ValueError(f"Unknown parser: {parser_name}")
+    except ImportError as e:
+        raise ImportError(
+            "deepdoc is not installed. Please install it with: pip install deepdoc"
+        ) from e
 
 
 def _handle_image(image_obj: Any, doc_id: str) -> str:
@@ -435,16 +466,21 @@ class DeepDocParser(
         """Get parser for a specific file extension (used for file paths and BytesIO objects)."""
         if ext not in self._parsers:
             if ext == ".pdf":
-                self._parsers[ext] = DeepDocPdfParser()
+                PdfParser = _import_deepdoc_parser("PdfParser")
+                self._parsers[ext] = PdfParser()
             elif ext == ".docx":
                 # Use DoclingParser for DOCX to support images and captions
-                self._parsers[ext] = DeepDocDoclingParser()
+                DoclingParser = _import_deepdoc_parser("DoclingParser")
+                self._parsers[ext] = DoclingParser()
             elif ext in [".xlsx", ".xls", ".csv"]:
-                self._parsers[ext] = DeepDocExcelParser()
+                ExcelParser = _import_deepdoc_parser("ExcelParser")
+                self._parsers[ext] = ExcelParser()
             elif ext == ".md":
-                self._parsers[ext] = DeepDocMarkdownParser()
+                MarkdownParser = _import_deepdoc_parser("MarkdownParser")
+                self._parsers[ext] = MarkdownParser()
             elif ext in [".txt", ".json", ".html"]:
-                self._parsers[ext] = DeepDocTxtParser()
+                TxtParser = _import_deepdoc_parser("TxtParser")
+                self._parsers[ext] = TxtParser()
             else:
                 raise ValueError(f"DeepDoc does not support file type: {ext}")
         return self._parsers[ext]
@@ -566,7 +602,7 @@ class DeepDocParser(
                     )
                 else:
                     # Handle DOCX with DoclingParser
-                    if ext == ".docx" and isinstance(parser, DeepDocDoclingParser):
+                    if ext == ".docx" and parser.__class__.__name__ == "DoclingParser":
                         if isinstance(file_path, BytesIO):
                             # DoclingParser needs a file path, not BytesIO
                             # For BytesIO, fall back to old parser behavior
