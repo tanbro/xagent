@@ -722,6 +722,20 @@ class PlanGenerator:
         if tools:
             tools_context = self._build_tools_context(tools)
 
+        # Add skill context if available (contains skill-specific instructions)
+        skill_section = ""
+        if skill_context:
+            skill_section = f"""
+
+## SKILL INSTRUCTIONS (CRITICAL - MUST FOLLOW)
+{skill_context}
+
+When deciding whether to ask for clarification, you MUST follow these skill instructions above all else.
+"""
+            logger.info(
+                f"[_build_classification_prompt] Including skill context: {skill_context[:100]}..."
+            )
+
         # Build system prompt
         system_prompt = (
             custom_prompt
@@ -797,6 +811,10 @@ When you return type="chat" (direct answer mode), you are providing a TEXT RESPO
 
         if tools_context:
             system_prompt += f"\n{tools_context}\n"
+
+        # Add skill context if available (must be after tools, before history)
+        if skill_section:
+            system_prompt += skill_section
 
         # Build messages list with history
         messages = [{"role": "system", "content": system_prompt}]
