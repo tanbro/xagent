@@ -604,6 +604,7 @@ Build when you need.`
       creative: "创意工具",
       analysis: "分析工具",
       mcp: "MCP 工具",
+      database: "数据库",
     },
     badges: {
       types: {
@@ -1693,6 +1694,7 @@ Build when you need.`
           office: "办公工具",
           specialImage: "图像工具",
           agent: "Agent 调用",
+          database: "数据库",
         },
         categoryDescriptions: {
           basic: "系统基础能力，包括数学计算、日期时间获取等核心功能。",
@@ -1706,6 +1708,7 @@ Build when you need.`
           office: "办公文档处理，支持 Word、Excel 等常用格式的操作。",
           specialImage: "高级图像处理，提供更专业的图像分析和转换工具。",
           agent: "多智能体协同，支持调用其他 Agent 完成复杂任务。",
+          database: "数据库操作，支持 SQL 查询、数据导出和数据库管理。",
         },
       },
       suggestedPrompts: {

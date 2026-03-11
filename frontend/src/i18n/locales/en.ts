@@ -604,6 +604,7 @@ Build when you need.`
       creative: "Creative Tools",
       analysis: "Analysis Tools",
       mcp: "MCP Tools",
+      database: "Database",
     },
     badges: {
       types: {
@@ -1693,6 +1694,7 @@ Build when you need.`
           office: "Office Tools",
           specialImage: "Image Tools",
           agent: "Agent Invocation",
+          database: "Database",
         },
         categoryDescriptions: {
           basic: "System basic capabilities, including core functions like mathematical calculations and date/time retrieval.",
@@ -1706,6 +1708,7 @@ Build when you need.`
           office: "Office document processing, supporting operations for common formats like Word and Excel.",
           specialImage: "Advanced image processing, providing professional image analysis and conversion tools.",
           agent: "Multi-agent collaboration, supporting invocation of other Agents to complete complex tasks.",
+          database: "Database operations, supporting SQL query, data export, and database management.",
         },
       },
       suggestedPrompts: {

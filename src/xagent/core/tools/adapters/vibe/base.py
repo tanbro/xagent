@@ -27,6 +27,7 @@ class ToolCategory(str, Enum):
     PPT = "ppt"
     AGENT = "agent"
     MCP = "mcp"
+    DATABASE = "database"
     OTHER = "other"
 
 

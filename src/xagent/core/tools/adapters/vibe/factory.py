@@ -108,9 +108,10 @@ class ToolRegistry:
         5. IMAGE - Image generation
         6. BROWSER - Browser automation
         7. PPT - PPT tools
-        8. MCP - MCP tools
-        9. AGENT - Agent tools (delegation)
-        10. OTHER - Other tools
+        8. DATABASE - Database tools (SQL query)
+        9. MCP - MCP tools
+        10. AGENT - Agent tools (delegation)
+        11. OTHER - Other tools
         """
         from .base import ToolCategory
 
@@ -123,9 +124,10 @@ class ToolRegistry:
             ToolCategory.IMAGE: 4,
             ToolCategory.BROWSER: 5,
             ToolCategory.PPT: 6,
-            ToolCategory.MCP: 7,
-            ToolCategory.AGENT: 8,
-            ToolCategory.OTHER: 9,
+            ToolCategory.DATABASE: 7,
+            ToolCategory.MCP: 8,
+            ToolCategory.AGENT: 9,
+            ToolCategory.OTHER: 10,
         }
 
         def get_tool_priority(tool: Tool) -> int:

@@ -11,6 +11,7 @@ from xagent.core.tools.core.sql_tool import (
     _get_connection_url,
     _row_to_dict,
     execute_sql_query,
+    get_database_type,
 )
 
 
@@ -44,6 +45,34 @@ class TestGetConnectionUrl:
                 monkeypatch.delenv(key)
         with pytest.raises(ValueError, match="not found"):
             _get_connection_url("test")
+
+
+class TestGetDatabaseType:
+    """Test database type detection."""
+
+    def test_get_database_type_sqlite(self, monkeypatch):
+        """Test SQLite database type detection."""
+        monkeypatch.setenv("XAGENT_EXTERNAL_DB_TEST", "sqlite:///test.db")
+        db_type = get_database_type("test")
+        assert db_type == "sqlite"
+
+    def test_get_database_type_postgresql(self, monkeypatch):
+        """Test PostgreSQL database type detection."""
+        monkeypatch.setenv("XAGENT_EXTERNAL_DB_ANALYTICS", "postgresql://localhost/db")
+        db_type = get_database_type("analytics")
+        assert db_type == "postgresql"
+
+    def test_get_database_type_mysql(self, monkeypatch):
+        """Test MySQL database type detection."""
+        monkeypatch.setenv("XAGENT_EXTERNAL_DB_PROD", "mysql+pymysql://localhost/prod")
+        db_type = get_database_type("prod")
+        assert db_type == "mysql"
+
+    def test_get_database_type_not_found(self, monkeypatch):
+        """Test error when connection not found."""
+        monkeypatch.setenv("XAGENT_EXTERNAL_DB_TEST", "sqlite:///test.db")
+        with pytest.raises(ValueError, match="not found"):
+            get_database_type("missing")
 
 
 class TestRowToDict:

@@ -10,9 +10,8 @@ Example:
     XAGENT_EXTERNAL_DB_LOCAL=sqlite:///path/to/database.db
     XAGENT_EXTERNAL_DB_DUCKDB=duckdb:///path/to/database.duckdb
 
-Note: This tool uses SQLAlchemy's synchronous engine. For async drivers,
-you must use the async variant (e.g., postgresql+asyncpg://) with a
-separate async implementation.
+Note: This tool uses SQLAlchemy's synchronous engine.
+Async drivers are not supported currently.
 """
 
 import csv
@@ -72,6 +71,23 @@ def _get_connection_url(connection_name: str) -> URL:
 
     # Validate URL format using SQLAlchemy
     return make_url(url)
+
+
+def get_database_type(connection_name: str) -> str:
+    """Get database type for a connection name.
+
+    Returns the database driver/type which helps LLM write appropriate SQL dialect.
+    Examples: postgresql, mysql, sqlite, duckdb
+
+    Args:
+        connection_name: Name of the connection (case-insensitive)
+
+    Returns:
+        Database type (driver name)
+    """
+    url = _get_connection_url(connection_name)
+    # Extract driver name from URL (e.g., "postgresql+asyncpg" -> "postgresql")
+    return url.drivername.split("+")[0]
 
 
 def _row_to_dict(row: Row) -> dict[str, Any]:

@@ -9,7 +9,8 @@ from textwrap import dedent, indent
 from typing import TYPE_CHECKING, Any, Optional
 
 from ....workspace import TaskWorkspace
-from ...core.sql_tool import execute_sql_query
+from ...core.sql_tool import execute_sql_query, get_database_type
+from .base import ToolCategory
 from .factory import ToolFactory, register_tool
 from .function import FunctionTool
 
@@ -17,6 +18,12 @@ if TYPE_CHECKING:
     from .config import BaseToolConfig
 
 logger = logging.getLogger(__name__)
+
+
+class SQLQueryFunctionTool(FunctionTool):
+    """SQL query tool with DATABASE category."""
+
+    category = ToolCategory.DATABASE
 
 
 class SqlQueryTool:
@@ -38,25 +45,53 @@ class SqlQueryTool:
     ) -> dict[str, Any]:
         return execute_sql_query(connection_name, query, output_file, self._workspace)
 
+    def get_database_type(self, connection_name: str) -> str:
+        return get_database_type(connection_name)
+
     def get_tools(self) -> list:
         """Get all tool instances."""
         tools = [
-            FunctionTool(
+            SQLQueryFunctionTool(
+                self.get_database_type,
+                name="get_database_type",
+                description=indent(
+                    dedent("""
+                    Get the database type for a connection name.
+
+                    This helps determine the SQL dialect to use when writing queries.
+                    Different databases have different syntax and functions.
+
+                    Args:
+                        connection_name: Database connection name to check
+
+                    Returns:
+                        str: Database type (postgresql, mysql, sqlite, duckdb, etc.)
+                """),
+                    "" * 4,
+                ),
+                tags=["sql", "database", "metadata"],
+            ),
+            SQLQueryFunctionTool(
                 self.execute_sql_query,
                 name="execute_sql_query",
                 description=indent(
                     dedent("""
                     Execute SQL queries on databases and return structured results.
 
+                    TIP: Call get_database_type(connection_name) first to learn the SQL dialect
+                    (postgresql, mysql, sqlite, duckdb have different syntax).
+
                         Args:
-                            connection_name: Database connection name to use
-                            query: SQL statement to execute
-                            output_file: Optional file path to export query results.
-                                Supported formats: .csv, .parquet, .json, .jsonl, .ndjson (relative to workspace).
-                                Use this for large datasets or complex analysis with Python.
-                                Formats: .csv (streaming), .parquet (streaming + compression),
-                                          .json/.jsonl/.ndjson (JSON Lines streaming).
-                                Example: output_file="results.parquet" for optimized pandas analysis.
+                            connection_name: (REQUIRED) The database connection name.
+                                Examples: "xagent", "analytics", "prod", "local"
+                                Use get_database_type() to check if a connection exists.
+                            query: (REQUIRED) SQL statement to execute.
+                                Use syntax matching the database type.
+                                Examples: "SELECT * FROM users LIMIT 10", "SELECT COUNT(*) FROM tasks"
+                            output_file: (OPTIONAL) Export results to file instead of returning them.
+                                Supported: .csv, .parquet, .json, .jsonl, .ndjson (relative to workspace).
+                                Use for large datasets to avoid response size limits.
+                                Example: output_file="results.parquet"
 
                         Returns:
                             dict with keys:
@@ -66,9 +101,8 @@ class SqlQueryTool:
                             - columns: column names in the result
                             - message: what happened (includes export info when applicable)
 
-                        Note: On error, exceptions are raised directly with full traceback
-                        for LLM to understand and debug the issue.
-
+                        Example:
+                            execute_sql_query("xagent", "SELECT COUNT(*) FROM tasks")
                 """),
                     "" * 4,
                 ),
