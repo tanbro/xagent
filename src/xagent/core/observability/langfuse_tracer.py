@@ -5,11 +5,17 @@ import functools
 import logging
 import threading
 import time
+from importlib.metadata import version as get_version
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Union
 
 from langfuse import Langfuse
+from packaging.version import Version
 
 from .langfuse_config import LangfuseConfig, load_langfuse_config
+
+# Check langfuse version for API compatibility
+# langfuse v4+ uses start_observation, v3 uses start_span
+LANGFUSE_VERSION = Version(get_version("langfuse"))
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -52,10 +58,19 @@ class LangfuseTracer:
 
     def create_span(self, name: str, parent_span: Optional[Any] = None) -> Any:
         if self.is_enabled() and self.langfuse:
-            if parent_span:
-                return parent_span.start_span(name=name)
+            # Use v4 API (start_observation) for langfuse >= 4.0, otherwise v3 API (start_span)
+            if LANGFUSE_VERSION >= Version("4.0.0"):
+                # v4+ API
+                if parent_span:
+                    return parent_span.start_observation(name=name)
+                else:
+                    return self.langfuse.start_observation(name=name)
             else:
-                return self.langfuse.start_span(name=name)
+                # v3 API
+                if parent_span:
+                    return parent_span.start_span(name=name)
+                else:
+                    return self.langfuse.start_span(name=name)
         return None
 
 
