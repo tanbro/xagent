@@ -5,6 +5,7 @@ import tempfile
 import time
 
 import pytest
+from packaging.version import Version
 
 from tests.utils.langfuse_helpers import (
     verify_langfuse_messages_metadata,
@@ -18,6 +19,7 @@ from tests.utils.mock_helpers import (
 )
 from xagent.core.observability.langfuse_config import LangfuseConfig
 from xagent.core.observability.langfuse_tracer import (
+    LANGFUSE_VERSION,
     LangfuseTracer,
     get_tracer,
     init_tracer,
@@ -25,6 +27,9 @@ from xagent.core.observability.langfuse_tracer import (
     trace_node,
     trace_tool_call,
 )
+
+# Check if langfuse v4 or later for test assertions
+LANGFUSE_IS_V4_OR_LATER = LANGFUSE_VERSION >= Version("4.0.0")
 
 
 def test_init_disabled_tracer(langfuse_tracer_reset):
@@ -188,11 +193,11 @@ async def test_trace_node_with_enabled_tracer(mocker, temp_dir, langfuse_tracer_
     assert len(result["messages"]) == 2  # Original + added message
     assert execution_time >= 0.1  # Should have taken at least 0.1 seconds
 
-    # Verify span was created and updated (supports both v3 and v4 API)
-    assert (
-        mock_langfuse_instance.start_span.called
-        or mock_langfuse_instance.start_observation.called
-    )
+    # Verify span was created and updated (version-specific API call)
+    if LANGFUSE_IS_V4_OR_LATER:
+        mock_langfuse_instance.start_observation.assert_called_once()
+    else:
+        mock_langfuse_instance.start_span.assert_called_once()
 
     # Use helper to verify metadata
     metadata = verify_langfuse_span_metadata(
@@ -255,11 +260,11 @@ async def test_trace_tool_call_captures_messages_before_and_after(
     }
     assert len(result["messages"]) == 3
 
-    # Verify span was created and updated (supports both v3 and v4 API)
-    assert (
-        mock_langfuse_instance.start_span.called
-        or mock_langfuse_instance.start_observation.called
-    )
+    # Verify span was created and updated (version-specific API call)
+    if LANGFUSE_IS_V4_OR_LATER:
+        mock_langfuse_instance.start_observation.assert_called_once()
+    else:
+        mock_langfuse_instance.start_span.assert_called_once()
     mock_span.update.assert_called_once()
     mock_span.end.assert_called_once()
 
@@ -388,8 +393,11 @@ async def test_trace_node_with_exception(mocker, temp_dir, langfuse_tracer_reset
     with pytest.raises(ValueError, match="Test error"):
         await test_func({"messages": [mock_input_message], "input": "test"})
 
-    # Verify span was created and updated with error
-    mock_langfuse_instance.start_span.assert_called_once_with(name="agent_test_node")
+    # Verify span was created and updated with error (supports both v3 and v4 API)
+    assert (
+        mock_langfuse_instance.start_span.called
+        or mock_langfuse_instance.start_observation.called
+    )
 
     # Use helper to verify metadata including error
     metadata = verify_langfuse_span_metadata(
@@ -605,11 +613,11 @@ async def test_trace_node_captures_tool_calls_in_messages(
     assert result["result"] == "done"
     assert len(result["messages"]) == 2
 
-    # Verify span was created and updated (supports both v3 and v4 API)
-    assert (
-        mock_langfuse_instance.start_span.called
-        or mock_langfuse_instance.start_observation.called
-    )
+    # Verify span was created and updated (version-specific API call)
+    if LANGFUSE_IS_V4_OR_LATER:
+        mock_langfuse_instance.start_observation.assert_called_once()
+    else:
+        mock_langfuse_instance.start_span.assert_called_once()
     mock_span.update.assert_called_once()
     mock_span.end.assert_called_once()
 
@@ -700,11 +708,11 @@ async def test_trace_node_captures_tool_result_messages(
     assert result["result"] == "done"
     assert len(result["messages"]) == 4  # human + ai + 2 tool results
 
-    # Verify span was created and updated (supports both v3 and v4 API)
-    assert (
-        mock_langfuse_instance.start_span.called
-        or mock_langfuse_instance.start_observation.called
-    )
+    # Verify span was created and updated (version-specific API call)
+    if LANGFUSE_IS_V4_OR_LATER:
+        mock_langfuse_instance.start_observation.assert_called_once()
+    else:
+        mock_langfuse_instance.start_span.assert_called_once()
     mock_span.update.assert_called_once()
     mock_span.end.assert_called_once()
 

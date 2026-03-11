@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from importlib.metadata import version as get_version
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Union
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Union, cast
 
 from langfuse import Langfuse
 from packaging.version import Version
@@ -66,11 +66,13 @@ class LangfuseTracer:
                 else:
                     return self.langfuse.start_observation(name=name)
             else:
-                # v3 API
+                # v3 API - use cast to satisfy mypy for v4+ type stubs
+                langfuse_client = cast(Any, self.langfuse)
                 if parent_span:
-                    return parent_span.start_span(name=name)
+                    parent = cast(Any, parent_span)
+                    return parent.start_span(name=name)
                 else:
-                    return self.langfuse.start_span(name=name)
+                    return langfuse_client.start_span(name=name)
         return None
 
 
