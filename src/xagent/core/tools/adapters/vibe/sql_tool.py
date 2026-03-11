@@ -83,15 +83,11 @@ class SqlQueryTool:
 
                         Args:
                             connection_name: (REQUIRED) The database connection name.
-                                Examples: "xagent", "analytics", "prod", "local"
-                                Use get_database_type() to check if a connection exists.
                             query: (REQUIRED) SQL statement to execute.
                                 Use syntax matching the database type.
-                                Examples: "SELECT * FROM users LIMIT 10", "SELECT COUNT(*) FROM tasks"
                             output_file: (OPTIONAL) Export results to file instead of returning them.
                                 Supported: .csv, .parquet, .json, .jsonl, .ndjson (relative to workspace).
                                 Use for large datasets to avoid response size limits.
-                                Example: output_file="results.parquet"
 
                         Returns:
                             dict with keys:
@@ -100,9 +96,6 @@ class SqlQueryTool:
                             - row_count: number of rows returned or affected
                             - columns: column names in the result
                             - message: what happened (includes export info when applicable)
-
-                        Example:
-                            execute_sql_query("xagent", "SELECT COUNT(*) FROM tasks")
                 """),
                     "" * 4,
                 ),
