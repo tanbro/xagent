@@ -29,7 +29,12 @@ def create_langfuse_span_mock(mocker, langfuse_instance) -> object:
         Mock span object
     """
     mock_span = mocker.Mock()
+    # Support both v3 (start_span) and v4 (start_observation) APIs
     langfuse_instance.start_span.return_value = mock_span
+    langfuse_instance.start_observation.return_value = mock_span
+    # Also add start_observation to the mock span for nested spans
+    mock_span.start_span.return_value = mocker.Mock()
+    mock_span.start_observation.return_value = mocker.Mock()
     return mock_span
 
 
