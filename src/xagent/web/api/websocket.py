@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from ..auth_dependencies import get_user_from_websocket_token
 from ..config import UPLOADS_DIR
 from ..models.database import get_db
-from ..models.task import Task
+from ..models.task import Task, TaskStatus
 from ..models.uploaded_file import UploadedFile
 from ..models.user import User
 from ..timeout_manager import timeout_manager
@@ -1922,10 +1922,41 @@ async def websocket_chat_endpoint(
         return
 
     await manager.connect(websocket, task_id)
+    logger.info(f"✅ WebSocket connected for task {task_id}, checking task status...")
 
     try:
         # Send initial state
         await handle_status_request(websocket, task_id, user)
+
+        # 🔥 TEMPORARY FIX: Auto-execute PENDING tasks when WebSocket connects
+        # This works around the frontend bug where pendingTaskToExecute mechanism
+        # was broken in commit 7845220
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            task = db.query(Task).filter(Task.id == task_id).first()
+            if task and task.status == TaskStatus.PENDING:
+                logger.info(f"🚀 Task {task_id} is PENDING, auto-executing...")
+                # Auto-execute the PENDING task by sending its description as a chat message
+                await handle_chat_message(
+                    websocket,
+                    task_id,
+                    {
+                        "type": "chat",
+                        "message": str(task.description),
+                        "context": {},
+                        "files": [],
+                        "user": user,
+                        "user_id": user.id,
+                    },
+                )
+            else:
+                logger.info(
+                    f"ℹ️ Task {task_id} status: {task.status.value if task else 'not found'}, waiting for client message..."
+                )
+        finally:
+            db.close()
 
         while True:
             # Receive client message
