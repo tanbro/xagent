@@ -10,10 +10,6 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from ...model import ChatModelConfig, ModelConfig
-from ...model.providers import (
-    default_base_url_for_provider,
-    provider_compatibility_for_provider,
-)
 from ...retry import ExponentialBackoff, RetryStrategy, create_retry_wrapper
 from .error import retry_on
 
@@ -101,16 +97,14 @@ def create_base_chat_model(
         raise TypeError(f"Unsupported Chat model type: {type(model).__name__}")
 
     temp = temperature if temperature is not None else model.default_temperature
-    compatibility = provider_compatibility_for_provider(model.model_provider)
 
-    if compatibility == "openai_compatible":
+    if model.model_provider == "openai":
         return ChatOpenAI(
             model=model.model_name,
             temperature=temp,
             max_tokens=model.default_max_tokens,
             api_key=model.api_key,
-            base_url=model.base_url
-            or default_base_url_for_provider(model.model_provider),
+            base_url=model.base_url,
             timeout=model.timeout,
         )
     elif model.model_provider == "zhipu":
