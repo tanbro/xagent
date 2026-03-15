@@ -2458,6 +2458,23 @@ async def handle_build_preview_execution(
             vision_model=vision_llm,  # Pass vision model for tool creation
         )
 
+        # Create sandbox for preview task
+        from ..sandbox_manager import get_sandbox_manager
+
+        sandbox_manager = get_sandbox_manager()
+        sandbox = None
+        if sandbox_manager:
+            user_id = int(user.id)
+            try:
+                sandbox = await sandbox_manager.get_or_create_sandbox(
+                    "user", str(user_id)
+                )
+            except Exception as e:
+                logger.error(f"Failed to create sandbox for user {user_id}: {e}")
+
+            if sandbox:
+                tool_config.set_sandbox(sandbox)
+
         # Check if previewing a published agent, exclude it from agent tools
         preview_agent_id = message_data.get("agent_id")
         if preview_agent_id:
