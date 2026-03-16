@@ -200,9 +200,10 @@ export function StandaloneFilePreviewDialog({
                 <DocxPreviewRenderer base64Content={content || ''} />
               ) : fileName.endsWith('.html') || fileName.endsWith('.htm') ? (
                 <iframe
-                  srcDoc={processHtmlContent(content, fileId)}
+                  src={`${getApiUrl()}/api/files/public/preview/${fileId}`}
                   className="w-full h-full border-0"
-                  sandbox="allow-same-origin allow-scripts"
+                  // Enhanced sandbox permissions for trusted content
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title={fileName}
                 />
               ) : fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (

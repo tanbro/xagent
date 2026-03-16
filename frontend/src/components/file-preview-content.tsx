@@ -16,6 +16,7 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
   const { state, dispatch } = useApp()
   const { filePreview } = state
   const { t } = useI18n()
+  const apiUrl = getApiUrl()
 
   // Load file content when the preview is open within container
   useEffect(() => {
@@ -171,9 +172,11 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
               <DocxPreviewRenderer base64Content={filePreview.content || ''} />
             ) : filePreview.fileName.endsWith('.html') || filePreview.fileName.endsWith('.htm') ? (
               <iframe
-                srcDoc={processHtmlContent(filePreview.content, filePreview.fileId)}
+                src={`${apiUrl}/api/files/public/preview/${filePreview.fileId}`}
                 className="w-full h-full border-0"
-                sandbox="allow-same-origin allow-scripts"
+                // Enhanced sandbox permissions for trusted content
+                // Allows: scripts, forms, popups, same-origin access
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 title={filePreview.fileName}
               />
             ) : (

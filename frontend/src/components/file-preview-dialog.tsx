@@ -320,9 +320,10 @@ export function FilePreviewDialog({ open, onOpenChange }: FilePreviewDialogProps
                 <DocxPreviewRenderer base64Content={filePreview.content || ''} />
               ) : filePreview.fileName.endsWith('.html') || filePreview.fileName.endsWith('.htm') ? (
                 <iframe
-                  srcDoc={processHtmlContent(filePreview.content, filePreview.fileId)}
+                  src={`${getApiUrl()}/api/files/public/preview/${filePreview.fileId}`}
                   className="w-full h-full border-0"
-                  sandbox="allow-same-origin allow-scripts"
+                  // Enhanced sandbox permissions for trusted content
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title={filePreview.fileName}
                 />
               ) : filePreview.fileName.toLowerCase().endsWith('.pdf') ? (
