@@ -16,6 +16,7 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
   const { state, dispatch } = useApp()
   const { filePreview } = state
   const { t } = useI18n()
+  const apiUrl = getApiUrl()
 
   // Load file content when the preview is open within container
   useEffect(() => {
@@ -107,21 +108,6 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
     }
   }, [open, filePreview.fileId, filePreview.content, filePreview.error, dispatch, t, filePreview.fileName])
 
-  const processHtmlContent = (htmlContent: string, fileId: string) => {
-    if (!htmlContent || !fileId) return htmlContent
-
-    const apiUrl = getApiUrl()
-
-    return htmlContent.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, path) => {
-        if (path.match(/^(https?:\/|data:|\/\/|#)/)) return match
-
-        return `${attr}="${apiUrl}/api/files/public/preview/${encodeURIComponent(fileId)}?relative_path=${encodeURIComponent(path)}"`
-      }
-    )
-  }
-
   return (
     <div className="w-full h-full">
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 h-full">
@@ -171,9 +157,12 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
               <DocxPreviewRenderer base64Content={filePreview.content || ''} />
             ) : filePreview.fileName.endsWith('.html') || filePreview.fileName.endsWith('.htm') ? (
               <iframe
-                srcDoc={processHtmlContent(filePreview.content, filePreview.fileId)}
+                src={`${apiUrl}/api/files/public/preview/${filePreview.fileId}`}
                 className="w-full h-full border-0"
-                sandbox="allow-same-origin allow-scripts"
+                // Enhanced sandbox permissions for trusted content
+                // allow-forms: HTML forms may need submit functionality
+                // allow-popups: Some visualizations may open new windows/tabs
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 title={filePreview.fileName}
               />
             ) : (

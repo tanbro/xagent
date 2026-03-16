@@ -19,6 +19,7 @@ export function FilePreviewDialog({ open, onOpenChange }: FilePreviewDialogProps
   const { state, dispatch, switchFilePreview } = useApp()
   const { filePreview } = state
   const { t } = useI18n()
+  const apiUrl = getApiUrl()
 
   // Extract the base filename from filePath if fileName contains path separators
   // This ensures we use just "image.jpeg" not "web_task_235/output/image.jpeg"
@@ -111,28 +112,6 @@ export function FilePreviewDialog({ open, onOpenChange }: FilePreviewDialogProps
       loadFileContent()
     }
   }, [open, filePreview.fileId, filePreview.content, filePreview.error, filePreview.fileName, dispatch])
-
-  // Convert relative paths in HTML to absolute paths
-  const processHtmlContent = (htmlContent: string, fileId: string) => {
-    if (!htmlContent || !fileId) return htmlContent
-
-    const apiUrl = getApiUrl()
-
-    // Replace relative paths for images, scripts, links, etc.
-    return htmlContent.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, path) => {
-        // Skip if it's already an absolute URL, data URL, or has a protocol
-        if (path.match(/^(https?:\/|data:|\/\/|#)/)) {
-          return match
-        }
-
-        const newUrl = `${apiUrl}/api/files/public/preview/${encodeURIComponent(fileId)}?relative_path=${encodeURIComponent(path)}`
-
-        return `${attr}="${newUrl}"`
-      }
-    )
-  }
 
   const handleDownload = async () => {
     if (filePreview.fileId) {
@@ -320,9 +299,12 @@ export function FilePreviewDialog({ open, onOpenChange }: FilePreviewDialogProps
                 <DocxPreviewRenderer base64Content={filePreview.content || ''} />
               ) : filePreview.fileName.endsWith('.html') || filePreview.fileName.endsWith('.htm') ? (
                 <iframe
-                  srcDoc={processHtmlContent(filePreview.content, filePreview.fileId)}
+                  src={`${apiUrl}/api/files/public/preview/${filePreview.fileId}`}
                   className="w-full h-full border-0"
-                  sandbox="allow-same-origin allow-scripts"
+                  // Enhanced sandbox permissions for trusted content
+                  // allow-forms: HTML forms may need submit functionality
+                  // allow-popups: Some visualizations may open new windows/tabs
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title={filePreview.fileName}
                 />
               ) : filePreview.fileName.toLowerCase().endsWith('.pdf') ? (

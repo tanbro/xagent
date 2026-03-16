@@ -26,6 +26,7 @@ export function StandaloneFilePreviewDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t } = useI18n()
+  const apiUrl = getApiUrl()
 
   // Load file content when dialog opens
   useEffect(() => {
@@ -81,27 +82,6 @@ export function StandaloneFilePreviewDialog({
       loadFileContent()
     }
   }, [open, fileId, content, error, t])
-
-  const processHtmlContent = (htmlContent: string, currentFileId: string) => {
-    if (!htmlContent || !currentFileId) return htmlContent
-
-    const apiUrl = getApiUrl()
-
-    // Replace relative paths for images, scripts, links, etc.
-    return htmlContent.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, path) => {
-        // Skip if it's already an absolute URL, data URL, or has a protocol
-        if (path.match(/^(https?:\/|data:|\/\/|#)/)) {
-          return match
-        }
-
-        const newUrl = `${apiUrl}/api/files/public/preview/${encodeURIComponent(currentFileId)}?relative_path=${encodeURIComponent(path)}`
-
-        return `${attr}="${newUrl}"`
-      }
-    )
-  }
 
   const handleDownload = async () => {
     if (fileId) {
@@ -200,9 +180,12 @@ export function StandaloneFilePreviewDialog({
                 <DocxPreviewRenderer base64Content={content || ''} />
               ) : fileName.endsWith('.html') || fileName.endsWith('.htm') ? (
                 <iframe
-                  srcDoc={processHtmlContent(content, fileId)}
+                  src={`${apiUrl}/api/files/public/preview/${fileId}`}
                   className="w-full h-full border-0"
-                  sandbox="allow-same-origin allow-scripts"
+                  // Enhanced sandbox permissions for trusted content
+                  // allow-forms: HTML forms may need submit functionality
+                  // allow-popups: Some visualizations may open new windows/tabs
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title={fileName}
                 />
               ) : fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) ? (
