@@ -108,21 +108,6 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
     }
   }, [open, filePreview.fileId, filePreview.content, filePreview.error, dispatch, t, filePreview.fileName])
 
-  const processHtmlContent = (htmlContent: string, fileId: string) => {
-    if (!htmlContent || !fileId) return htmlContent
-
-    const apiUrl = getApiUrl()
-
-    return htmlContent.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, path) => {
-        if (path.match(/^(https?:\/|data:|\/\/|#)/)) return match
-
-        return `${attr}="${apiUrl}/api/files/public/preview/${encodeURIComponent(fileId)}?relative_path=${encodeURIComponent(path)}"`
-      }
-    )
-  }
-
   return (
     <div className="w-full h-full">
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 h-full">
@@ -175,7 +160,8 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
                 src={`${apiUrl}/api/files/public/preview/${filePreview.fileId}`}
                 className="w-full h-full border-0"
                 // Enhanced sandbox permissions for trusted content
-                // Allows: scripts, forms, popups, same-origin access
+                // allow-forms: HTML forms may need submit functionality
+                // allow-popups: Some visualizations may open new windows/tabs
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 title={filePreview.fileName}
               />
