@@ -25,21 +25,6 @@ export function FileViewer({
 }: FileViewerProps) {
   const { t } = useI18n()
 
-  const processHtmlContent = (htmlContent: string, fileId: string) => {
-    if (!htmlContent || !fileId) return htmlContent
-
-    const apiUrl = getApiUrl()
-
-    return htmlContent.replace(
-      /(src|href)=["']([^"']+)["']/g,
-      (match, attr, path) => {
-        if (path.match(/^(https?:\/|data:|\/\/|#)/)) return match
-
-        return `${attr}="${apiUrl}/api/files/public/preview/${encodeURIComponent(fileId)}?relative_path=${encodeURIComponent(path)}"`
-      }
-    )
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -106,9 +91,9 @@ export function FileViewer({
           </pre>
         ) : (
           <iframe
-            srcDoc={processHtmlContent(content || '', fileId)}
+            src={`${getApiUrl()}/api/files/public/preview/${fileId}`}
             className="w-full h-full border-0"
-            sandbox="allow-same-origin allow-scripts"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
             title={fileName}
           />
         )

@@ -15,6 +15,7 @@ export function FilePreviewContent({ open }: FilePreviewContentProps) {
   const { state, dispatch } = useApp()
   const { filePreview } = state
   const { t } = useI18n()
+  const apiUrl = getApiUrl()
 
   // Load file content when the preview is open within container
   useEffect(() => {
