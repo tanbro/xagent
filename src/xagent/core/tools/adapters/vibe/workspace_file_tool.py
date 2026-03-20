@@ -92,9 +92,9 @@ class WorkspaceFileTools(WorkspaceFileOperations):
         """Create directory in workspace"""
         return self.inner.create_directory(directory_path, parents)
 
-    def get_file_info(self, file_path: str) -> FileInfo:
-        """Get detailed file information in workspace"""
-        return self.inner.get_file_info(file_path)
+    def get_file_info(self, file_path_or_id: str) -> FileInfo:
+        """Get detailed file information in workspace. Accepts either file paths or file_ids."""
+        return self.inner.get_file_info(file_path_or_id)
 
     def read_json_file(self, file_path: str, encoding: str = "utf-8") -> Any:
         """Read JSON file in workspace"""
@@ -130,13 +130,34 @@ class WorkspaceFileTools(WorkspaceFileOperations):
         """Get output file list from current workspace"""
         return self.inner.get_workspace_output_files()
 
+    def list_all_user_files(
+        self,
+        include_workspace_files: bool = True,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """List all user files across all workspaces and uploaded files.
+
+        Args:
+            include_workspace_files: Whether to include current workspace files
+            limit: Maximum number of files to return (default: 1000)
+            offset: Number of files to skip for pagination (default: 0)
+
+        Returns:
+            Dictionary with list of all user files with metadata including file_id,
+            filename, storage_path, size, mime_type, etc.
+        """
+        return self.workspace.list_all_user_files(
+            include_workspace_files, limit, offset
+        )
+
     def get_tools(self) -> List[FunctionTool]:
         """Get all tool instances"""
         return [
             FileTool(
                 self.read_file,
                 name="read_file",
-                description="Read file content in workspace. Use relative paths (e.g., 'filename.txt'), not absolute paths.",
+                description="Read file content in workspace. Accepts either file paths (e.g., 'filename.txt') or file_ids (e.g., 'abc-123-def'). Automatically detects input type.",
             ),
             FileTool(
                 self.write_file,
@@ -171,12 +192,12 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             FileTool(
                 self.get_file_info,
                 name="get_file_info",
-                description="Get detailed file information in workspace",
+                description="Get detailed file information in workspace. Accepts either file paths (e.g., 'filename.txt') or file_ids (e.g., 'abc-123-def'). Automatically detects input type.",
             ),
             FileTool(
                 self.read_json_file,
                 name="read_json_file",
-                description="Read JSON file in workspace",
+                description="Read JSON file in workspace. Accepts either file paths (e.g., 'filename.txt') or file_ids (e.g., 'abc-123-def'). Automatically detects input type.",
             ),
             FileTool(
                 self.write_json_file,
@@ -186,7 +207,7 @@ class WorkspaceFileTools(WorkspaceFileOperations):
             FileTool(
                 self.read_csv_file,
                 name="read_csv_file",
-                description="Read CSV file in workspace",
+                description="Read CSV file in workspace. Accepts either file paths (e.g., 'filename.txt') or file_ids (e.g., 'abc-123-def'). Automatically detects input type.",
             ),
             FileTool(
                 self.write_csv_file,
@@ -197,6 +218,11 @@ class WorkspaceFileTools(WorkspaceFileOperations):
                 self.get_workspace_output_files,
                 name="get_workspace_output_files",
                 description="Get output file list from current workspace",
+            ),
+            FileTool(
+                self.list_all_user_files,
+                name="list_all_user_files",
+                description="List all user files across all workspaces and uploaded files. Supports pagination and filtering. Returns file_id, filename, storage_path, size, mime_type, and whether files are in current workspace.",
             ),
             FileTool(
                 self.edit_file,

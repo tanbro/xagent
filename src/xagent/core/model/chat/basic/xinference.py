@@ -566,30 +566,92 @@ class XinferenceLLM(BaseLLM):
             ...     base_url="http://localhost:9997"
             ... )
         """
-        client = XinferenceClient(base_url=base_url, api_key=api_key)
+        import time
 
-        try:
-            # Get list of running models
-            # list_models returns Dict[str, Dict[str, Any]] where key is model_uid
-            models_dict = client.list_models()
+        # Ensure base_url doesn't have trailing slash
+        base_url = base_url.rstrip("/")
 
-            result = []
-            for model_uid, model_info in models_dict.items():
-                result.append(
-                    {
-                        "id": model_info.get("model_name", model_uid),
-                        "model_uid": model_uid,
-                        "model_type": model_info.get("model_type", ""),
-                        "model_ability": model_info.get("model_ability", []),
-                        "description": model_info.get("model_description", ""),
-                    }
+        # Map Xinference abilities to Xagent abilities
+        ability_mapping = {
+            "audio2text": "asr",
+            "text2audio": "tts",
+            "text2audio_zero_shot": "tts",
+            "text2audio_voice_cloning": "tts",
+            "chat": "chat",
+            "vision": "vision",
+            "tool_calling": "tool_calling",
+        }
+
+        # Retry logic for transient network issues
+        max_retries = 3
+        retry_delay = 1.0  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                # Use xinference-client SDK to list models
+                client = XinferenceClient(base_url=base_url, api_key=api_key)
+
+                logger.debug(
+                    f"Fetching models from Xinference: {base_url} (attempt {attempt + 1}/{max_retries})"
                 )
 
-            return result
+                # Use SDK's list_models method
+                model_list = client.list_models()
 
-        except Exception as e:
-            logger.error(f"Failed to fetch models from Xinference: {e}")
-            return []
+                result = []
+                for model_info in model_list:
+                    model_uid = model_info.get("id", "")
+                    if not model_uid:
+                        continue
 
-        finally:
-            client.close()
+                    # Map abilities
+                    xinference_abilities = model_info.get("model_ability", [])
+                    mapped_abilities = []
+                    for ability in xinference_abilities:
+                        mapped_ability = ability_mapping.get(ability, ability)
+                        # Only add core abilities (asr, tts, chat, vision, tool_calling)
+                        # Filter out detailed capabilities like text2audio_emotion_control
+                        if mapped_ability in [
+                            "asr",
+                            "tts",
+                            "chat",
+                            "vision",
+                            "tool_calling",
+                        ]:
+                            if mapped_ability not in mapped_abilities:
+                                mapped_abilities.append(mapped_ability)
+
+                    result.append(
+                        {
+                            "id": model_info.get("model_name", model_uid),
+                            "model_uid": model_uid,
+                            "model_type": model_info.get("model_type", ""),
+                            "model_ability": mapped_abilities,
+                            "abilities": mapped_abilities,  # Add abilities field for xagent
+                            "description": model_info.get("model_description", ""),
+                        }
+                    )
+
+                logger.info(
+                    f"Successfully fetched {len(result)} models from Xinference"
+                )
+                return result
+
+            except Exception as e:
+                # Network or connection error
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Error connecting to Xinference, retrying in {retry_delay}s: {e}"
+                    )
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    logger.error(
+                        f"Failed to connect to Xinference after {max_retries} attempts: {e}"
+                    )
+                    raise RuntimeError(
+                        f"Cannot connect to Xinference server at {base_url}: {e}"
+                    ) from e
+
+        # This should never be reached, but mypy needs it
+        return []

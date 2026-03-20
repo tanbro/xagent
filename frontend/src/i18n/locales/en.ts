@@ -620,6 +620,7 @@ Build when you need.`
         knowledge: "Knowledge",
         image: "Image",
         vision: "Vision",
+        audio: "Audio",
         special_image: "Image",
       },
       source: {
@@ -630,6 +631,7 @@ Build when you need.`
       knowledge: "Knowledge",
       image: "Image",
       vision: "Vision",
+      audio: "Audio",
       special_image: "Image",
       builtin: "Built-in",
     },
@@ -1141,6 +1143,7 @@ Build when you need.`
       llm: "LLM Models",
       embedding: "Embedding Models",
       image: "Image Generation Models",
+      speech: "Speech Models",
     },
     section: {
       enabledModels: "Enabled Models",
@@ -1165,6 +1168,8 @@ Build when you need.`
       embedding: "Embedding Model",
       image: "Image Generation Model",
       image_edit: "Image Edit",
+      asr: "Speech Recognition Model",
+      tts: "Text-to-Speech Model",
       shared: "Shared",
       shared_from_others: "Public Model",
     },
@@ -1256,6 +1261,8 @@ Build when you need.`
       embedding: "Embedding",
       generate: "Generate",
       edit: "Edit",
+      asr: "Speech Recognition (ASR)",
+      tts: "Text-to-Speech (TTS)",
     },
     providers: {
       openai: {
@@ -1776,6 +1783,7 @@ Build when you need.`
           file: "File Operations",
           vision: "Vision",
           image: "Image Generation",
+          audio: "Audio Processing",
           knowledge: "Knowledge Base",
           mcp: "MCP Tools",
           browser: "Browser Automation",
@@ -1791,6 +1799,7 @@ Build when you need.`
           file: "File system operations, supporting reading, writing, searching, listing, and managing files.",
           vision: "Computer vision capabilities, supporting image recognition, analysis, and content extraction.",
           image: "Image generation and processing, supporting text-to-image, image editing, and other creative functions.",
+          audio: "Audio processing capabilities, supporting speech recognition (ASR) and text-to-speech (TTS).",
           knowledge: "Knowledge base retrieval and management, supporting semantic search and citation of document content.",
           mcp: "Model Context Protocol extensions, connecting external services and data sources.",
           browser: "Web browsing and automation, supporting web content scraping and interactive operations.",

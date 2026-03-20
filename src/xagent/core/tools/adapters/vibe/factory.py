@@ -61,6 +61,7 @@ class ToolRegistry:
             # Import tool modules in priority order - these imports trigger @register_tool decorators
             from . import (  # noqa: F401 - imports trigger @register_tool decorators
                 agent_tool,
+                audio_tool,
                 basic_tools,
                 browser_tools,
                 image_tool,
@@ -70,6 +71,7 @@ class ToolRegistry:
                 skill_tools,
                 special_image_tools,
                 sql_tool,
+                translate_json,
                 vision_tool,
                 workspace_file_tool,
             )

@@ -1164,6 +1164,9 @@ Example:
 }"""
             )
         else:
+            # Build tool descriptions
+            tool_descriptions = self._build_tool_descriptions(tool_names)
+
             prompt = (
                 custom_prompt
                 + f"""You are an AI assistant that uses tools to accomplish tasks.
@@ -1179,7 +1182,7 @@ You must respond with a structured action in the following JSON format:
    }}
 
 Available tools:
-{chr(10).join(f"- {name}" for name in tool_names)}
+{chr(10).join(tool_descriptions)}
 
 Rules:
 1. You must respond with valid JSON only
@@ -1263,6 +1266,9 @@ Failure case:
 }
 === END ACTION FORMAT REQUIREMENTS ==="""
         else:
+            # Build tool descriptions
+            tool_descriptions = self._build_tool_descriptions(tool_names)
+
             action_requirements = f"""
 
 === ACTION FORMAT REQUIREMENTS ===
@@ -1279,7 +1285,7 @@ You must respond with a structured action in the following JSON format:
 }}
 
 Available tools:
-{chr(10).join(f"- {name}" for name in tool_names)}
+{chr(10).join(tool_descriptions)}
 
 Rules:
 1. You must respond with valid JSON only
@@ -1320,6 +1326,26 @@ Failed final answer:
 === END ACTION FORMAT REQUIREMENTS ==="""
 
         return existing_prompt + action_requirements
+
+    def _build_tool_descriptions(self, tool_names: List[str]) -> List[str]:
+        """
+        Build formatted tool descriptions with name and description.
+
+        Args:
+            tool_names: List of tool names to describe
+
+        Returns:
+            List of formatted tool description strings
+        """
+        tool_descriptions = []
+        for tool_name in tool_names:
+            try:
+                tool = self.tool_registry.get(tool_name)
+                desc = tool.metadata.description or ""
+                tool_descriptions.append(f"- {tool_name}: {desc}")
+            except Exception:
+                tool_descriptions.append(f"- {tool_name}")
+        return tool_descriptions
 
     def _build_tool_schema(self, tool: Tool) -> Dict[str, Any]:
         """Build OpenAI-style function schema for a tool."""

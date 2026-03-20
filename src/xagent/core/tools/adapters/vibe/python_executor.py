@@ -73,7 +73,7 @@ class PythonExecutorTool(AbstractBaseTool):
         workspace_env = self._get_workspace_env()
 
         # Create core executor instance
-        executor = PythonExecutorCore(working_directory)
+        executor = PythonExecutorCore(working_directory=working_directory)
 
         # Add workspace variables to the executor's globals if available
         if workspace_env:
@@ -137,13 +137,14 @@ def get_python_executor_tool(info: Optional[dict[str, Any]] = None) -> FunctionT
 
     # Wrap as LangChain tool
     def execute_python_code(code: str, capture_output: bool = True) -> Dict[str, Any]:
-        """Execute Python code safely."""
         result: Dict[str, Any] = executor.run_json_sync(
             {"code": code, "capture_output": capture_output}
         )
         return result
 
-    return PythonExecutorFunctionTool(execute_python_code)
+    return PythonExecutorFunctionTool(
+        execute_python_code, description=executor.description
+    )
 
 
 def create_python_executor_tool(workspace: TaskWorkspace) -> AbstractBaseTool:

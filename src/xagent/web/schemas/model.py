@@ -1,7 +1,64 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 from pydantic import BaseModel, field_validator
+
+
+def _validate_abilities_for_category(abilities: List[str], category: str) -> List[str]:
+    """
+    Validate abilities based on model category.
+
+    Args:
+        abilities: List of abilities to validate
+        category: Model category (e.g., 'image', 'embedding', 'speech', 'llm')
+
+    Returns:
+        The validated abilities list
+
+    Raises:
+        ValueError: If abilities are invalid for the category or empty
+    """
+    if category == "image":
+        # Image models can only have "generate" and "edit" abilities
+        valid_image_abilities: Set[str] = {"generate", "edit"}
+        invalid_abilities = set(abilities) - valid_image_abilities
+
+        if invalid_abilities:
+            raise ValueError(
+                f"Invalid abilities for image model: {invalid_abilities}. "
+                f"Valid abilities are: {valid_image_abilities}"
+            )
+
+        if not abilities:
+            raise ValueError("Image model must have at least one ability")
+    elif category == "embedding":
+        # Embedding models can only have "embedding" ability
+        valid_embedding_abilities: Set[str] = {"embedding"}
+        invalid_abilities = set(abilities) - valid_embedding_abilities
+
+        if invalid_abilities:
+            raise ValueError(
+                f"Invalid abilities for embedding model: {invalid_abilities}. "
+                f"Valid abilities are: {valid_embedding_abilities}"
+            )
+
+        if not abilities:
+            raise ValueError("Embedding model must have at least one ability")
+    elif category == "speech":
+        # Speech models can have "asr", "tts" abilities
+        valid_speech_abilities: Set[str] = {"asr", "tts"}
+        invalid_abilities = set(abilities) - valid_speech_abilities
+
+        if invalid_abilities:
+            raise ValueError(
+                f"Invalid abilities for speech model: {invalid_abilities}. "
+                f"Valid abilities are: {valid_speech_abilities}"
+            )
+
+        if not abilities:
+            raise ValueError("Speech model must have at least one ability")
+
+    return abilities
 
 
 class ModelCreate(BaseModel):
@@ -18,6 +75,11 @@ class ModelCreate(BaseModel):
     abilities: Optional[List[str]] = None
     description: Optional[str] = None
     share_with_users: bool = False  # Admin only: share this model with all users
+    # Speech-specific parameters (for ASR and TTS)
+    language: Optional[str] = None  # Default language code (e.g., 'zh', 'en')
+    voice: Optional[str] = None  # TTS voice/speaker (e.g., 'female', 'male')
+    format: Optional[str] = None  # TTS audio format (e.g., 'mp3', 'wav', 'pcm')
+    sample_rate: Optional[int] = None  # TTS sample rate in Hz (e.g., 24000, 48000)
 
     @field_validator("model_id", "model_name", "base_url", "api_key", mode="before")
     @classmethod
@@ -37,35 +99,7 @@ class ModelCreate(BaseModel):
             return v
 
         category = values.data.get("category", "llm")
-
-        if category == "image":
-            # Image models can only have "generate" and "edit" abilities
-            valid_image_abilities = {"generate", "edit"}
-            invalid_abilities = set(v) - valid_image_abilities
-
-            if invalid_abilities:
-                raise ValueError(
-                    f"Invalid abilities for image model: {invalid_abilities}. "
-                    f"Valid abilities are: {valid_image_abilities}"
-                )
-
-            if not v:
-                raise ValueError("Image model must have at least one ability")
-        elif category == "embedding":
-            # Embedding models can only have "embedding" ability
-            valid_embedding_abilities = {"embedding"}
-            invalid_abilities = set(v) - valid_embedding_abilities
-
-            if invalid_abilities:
-                raise ValueError(
-                    f"Invalid abilities for embedding model: {invalid_abilities}. "
-                    f"Valid abilities are: {valid_embedding_abilities}"
-                )
-
-            if not v:
-                raise ValueError("Embedding model must have at least one ability")
-
-        return v
+        return _validate_abilities_for_category(v, category)
 
 
 class ModelUpdate(BaseModel):
@@ -81,6 +115,11 @@ class ModelUpdate(BaseModel):
     description: Optional[str] = None
     abilities: Optional[List[str]] = None
     share_with_users: Optional[bool] = None  # Admin only: update sharing status
+    # Speech-specific parameters (for ASR and TTS)
+    language: Optional[str] = None  # Default language code (e.g., 'zh', 'en')
+    voice: Optional[str] = None  # TTS voice/speaker (e.g., 'female', 'male')
+    format: Optional[str] = None  # TTS audio format (e.g., 'mp3', 'wav', 'pcm')
+    sample_rate: Optional[int] = None  # TTS sample rate in Hz (e.g., 24000, 48000)
 
     @field_validator("model_name", "base_url", "api_key", mode="before")
     @classmethod
@@ -99,35 +138,10 @@ class ModelUpdate(BaseModel):
         if v is None:
             return v
 
+        # Only validate if category is being updated
         category = values.data.get("category")
-
-        # If category is being updated to "image" or is already "image"
-        if category == "image":
-            # Image models can only have "generate" and "edit" abilities
-            valid_image_abilities = {"generate", "edit"}
-            invalid_abilities = set(v) - valid_image_abilities
-
-            if invalid_abilities:
-                raise ValueError(
-                    f"Invalid abilities for image model: {invalid_abilities}. "
-                    f"Valid abilities are: {valid_image_abilities}"
-                )
-
-            if not v:
-                raise ValueError("Image model must have at least one ability")
-        elif category == "embedding":
-            # Embedding models can only have "embedding" ability
-            valid_embedding_abilities = {"embedding"}
-            invalid_abilities = set(v) - valid_embedding_abilities
-
-            if invalid_abilities:
-                raise ValueError(
-                    f"Invalid abilities for embedding model: {invalid_abilities}. "
-                    f"Valid abilities are: {valid_embedding_abilities}"
-                )
-
-            if not v:
-                raise ValueError("Embedding model must have at least one ability")
+        if category is not None:
+            return _validate_abilities_for_category(v, category)
 
         return v
 
@@ -186,7 +200,7 @@ class UserDefaultModelCreate(BaseModel):
     """User default model configuration creation schema"""
 
     model_id: int
-    config_type: str  # 'general', 'small_fast', 'visual', 'compact', 'embedding', 'image', 'image_edit'
+    config_type: str  # 'general', 'small_fast', 'visual', 'compact', 'embedding', 'image', 'image_edit', 'asr', 'tts', 'speech'
 
     @field_validator("config_type")
     @classmethod
@@ -199,6 +213,9 @@ class UserDefaultModelCreate(BaseModel):
             "embedding",
             "image",
             "image_edit",
+            "asr",
+            "tts",
+            "speech",
         }
         if v not in valid_types:
             raise ValueError(

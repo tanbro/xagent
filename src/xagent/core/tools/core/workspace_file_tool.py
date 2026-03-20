@@ -407,12 +407,20 @@ class WorkspaceFileOperations:
         resolved_path.mkdir(parents=parents, exist_ok=True)
         return True
 
-    def get_file_info(self, file_path: str) -> FileInfo:
-        """Get detailed information about file in workspace"""
-        resolved_path = self.workspace.resolve_path_with_search(file_path)
+    def get_file_info(self, file_path_or_id: str) -> FileInfo:
+        """Get detailed information about file by path or file_id.
+
+        Args:
+            file_path_or_id: Either a file path (relative/absolute) or a file_id
+
+        Returns:
+            File information including metadata
+        """
+        # Try to resolve as file_id first
+        resolved_path = self.workspace.resolve_path_with_search(file_path_or_id)
 
         if not resolved_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path_or_id}")
 
         stat = resolved_path.stat()
 
@@ -423,13 +431,14 @@ class WorkspaceFileOperations:
             is_file=resolved_path.is_file(),
             is_dir=resolved_path.is_dir(),
             modified_time=stat.st_mtime,
+            encoding=None,  # Add encoding field
         )
 
-    def read_json_file(self, file_path: str, encoding: str = "utf-8") -> Any:
-        """Read JSON file in workspace"""
+    def read_json_file(self, file_path_or_id: str, encoding: str = "utf-8") -> Any:
+        """Read JSON file in workspace. Accepts either file paths or file_ids."""
         from .file_tool import read_json_file as basic_read_json_file
 
-        resolved_path = self.workspace.resolve_path_with_search(file_path)
+        resolved_path = self.workspace.resolve_path_with_search(file_path_or_id)
         return basic_read_json_file(str(resolved_path), encoding)
 
     def write_json_file(
@@ -447,17 +456,17 @@ class WorkspaceFileOperations:
 
     def read_csv_file(
         self,
-        file_path: str,
+        file_path_or_id: str,
         encoding: str = "utf-8",
         delimiter: str = ",",
     ) -> List[Dict[str, str]]:
-        """Read CSV file in workspace"""
+        """Read CSV file in workspace. Accepts either file paths or file_ids."""
         # Read the file directly without using document parser
         # CSV files should be read as plain text for proper parsing
-        resolved_path = self.workspace.resolve_path_with_search(file_path)
+        resolved_path = self.workspace.resolve_path_with_search(file_path_or_id)
 
         if not resolved_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path_or_id}")
 
         with open(resolved_path, "r", encoding=encoding) as f:
             content = f.read()
@@ -497,6 +506,27 @@ class WorkspaceFileOperations:
             }
         except Exception as e:
             return {"error": str(e), "files": []}
+
+    def list_all_user_files(
+        self,
+        include_workspace_files: bool = True,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """List all user files across all workspaces and uploaded files.
+
+        Args:
+            include_workspace_files: Whether to include current workspace files
+            limit: Maximum number of files to return (default: 1000)
+            offset: Number of files to skip for pagination (default: 0)
+
+        Returns:
+            Dictionary with list of all user files with metadata including file_id,
+            filename, storage_path, size, mime_type, etc.
+        """
+        return self.workspace.list_all_user_files(
+            include_workspace_files, limit, offset
+        )
 
     def edit_file(
         self,

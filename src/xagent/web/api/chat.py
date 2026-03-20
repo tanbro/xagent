@@ -131,6 +131,7 @@ async def create_default_tools(
     excluded_agent_id: Optional[int] = None,
     vision_model: Optional[Any] = None,
     sandbox: Optional[Any] = None,
+    llm: Optional[Any] = None,
 ) -> tuple[list[Any], Any]:
     """Create default tools and tool_config for AgentService using ToolFactory"""
     if not user:
@@ -144,6 +145,7 @@ async def create_default_tools(
     tool_config = WebToolConfig(
         db=db,
         request=request,
+        llm=llm,
         user_id=int(user.id),
         is_admin=bool(user.is_admin),
         workspace_config={
@@ -616,6 +618,7 @@ class AgentServiceManager:
                     temp_config = WebToolConfig(
                         db=db,
                         request=self.request,
+                        llm=task_llm,
                         user_id=int(user.id),
                         is_admin=bool(user.is_admin),
                         workspace_config=None,
@@ -678,6 +681,7 @@ class AgentServiceManager:
                     excluded_agent_id=excluded_agent_id,
                     vision_model=task_vision_llm,  # Pass task-specific vision model
                     sandbox=sandbox,
+                    llm=task_llm,  # Pass task-specific LLM
                 )
 
                 with UserContext(int(user.id)):
