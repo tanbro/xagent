@@ -8,8 +8,7 @@ Each tool instance operates within its designated workspace only.
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List
 
-from xagent.core.workspace import TaskWorkspace
-
+from .....core.workspace import TaskWorkspace
 from ...core.workspace_file_tool import FileInfo, WorkspaceFileOperations
 from .base import ToolCategory
 from .function import FunctionTool

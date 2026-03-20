@@ -604,6 +604,7 @@ Build when you need.`
       analysis: "分析工具",
       mcp: "MCP 工具",
       database: "数据库",
+      skill: "技能工具",
     },
     badges: {
       types: {
@@ -1722,6 +1723,7 @@ Build when you need.`
           specialImage: "图像工具",
           agent: "Agent 调用",
           database: "数据库",
+          skill: "技能工具",
         },
         categoryDescriptions: {
           basic: "系统基础能力，包括数学计算、日期时间获取等核心功能。",
@@ -1736,6 +1738,7 @@ Build when you need.`
           specialImage: "高级图像处理，提供更专业的图像分析和转换工具。",
           agent: "多智能体协同，支持调用其他 Agent 完成复杂任务。",
           database: "数据库操作，支持 SQL 查询、数据导出和数据库管理。",
+          skill: "技能文件访问，支持读取和列出技能目录中的文件。",
         },
       },
       suggestedPrompts: {

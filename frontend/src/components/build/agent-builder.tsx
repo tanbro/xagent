@@ -513,6 +513,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       'special_image': t('builds.configForm.tools.categoryDescriptions.specialImage'),
       'agent': t('builds.configForm.tools.categoryDescriptions.agent'),
       'database': t('builds.configForm.tools.categoryDescriptions.database'),
+      'skill': t('builds.configForm.tools.categoryDescriptions.skill'),
     }
     return descriptions[category] || ""
   }
@@ -532,6 +533,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       'special_image': t('builds.configForm.tools.categories.specialImage'),
       'agent': t('builds.configForm.tools.categories.agent'),
       'database': t('builds.configForm.tools.categories.database'),
+      'skill': t('builds.configForm.tools.categories.skill'),
     }
     return labels[category] || category
   }

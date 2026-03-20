@@ -86,6 +86,11 @@ Xagent has two categories of tools:
 - Model Context Protocol (MCP) server integration
 - Standardized tool access via MCP protocol
 
+**Skill Documentation Access Tools** (`src/xagent/core/tools/adapters/vibe/skill_tools.py`):
+- `read_skill_doc` - Read documentation from skill directories (SKILL.md, examples, etc.)
+- `list_skill_docs` - List documentation files in skill directories (returns names and sizes)
+- `fetch_skill_file` - Copy resource files from skill directories to workspace
+
 ### Custom Tools
 
 Create custom tools by adding Python files following the naming convention:
