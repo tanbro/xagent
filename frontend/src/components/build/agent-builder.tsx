@@ -11,17 +11,14 @@ import { ChatInput } from "@/components/chat/ChatInput"
 import { ChatMessage } from "@/components/chat/ChatMessage"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl, getWsUrl } from "@/lib/utils"
-import { PlusCircle, MessageSquare, Upload, Download, Info, Settings2, Check, Zap, BookOpen, ChevronLeft, Sparkles, Loader2, AlertTriangle } from "lucide-react"
+import { PlusCircle, MessageSquare, Upload, Download, Settings2, Check, Zap, BookOpen, ChevronLeft, Sparkles, Loader2 } from "lucide-react"
 import { useI18n } from "@/contexts/i18n-context"
 import { useAuth } from "@/contexts/auth-context"
 import { FileAttachment } from "@/components/file-attachment"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Select } from "@/components/ui/select"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+  InfoTooltip,
 } from "@/components/ui/tooltip"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import {
@@ -142,9 +139,6 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
   // Create Success Dialog State
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
   const [createdAgent, setCreatedAgent] = useState<any>(null)
-
-  // Knowledge-base tool validation dialog
-  const [showKbToolWarning, setShowKbToolWarning] = useState(false)
 
   // Data State
   const [models, setModels] = useState<Model[]>([])
@@ -738,9 +732,10 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       return
     }
 
-    if (selectedKbs.length > 0 && !selectedToolCategories.includes("knowledge")) {
-      setShowKbToolWarning(true)
-      return
+    let finalToolCategories = [...selectedToolCategories]
+    if (selectedKbs.length > 0 && !finalToolCategories.includes("knowledge")) {
+      finalToolCategories.push("knowledge")
+      setSelectedToolCategories(finalToolCategories)
     }
 
     setIsCreating(true)
@@ -772,7 +767,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
           models: modelConfig,
           knowledge_bases: selectedKbs,
           skills: selectedSkills,
-          tool_categories: selectedToolCategories,
+          tool_categories: finalToolCategories,
           logo_base64,
         }),
       })
@@ -801,7 +796,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
             models: modelConfig,
             knowledge_bases: selectedKbs,
             skills: selectedSkills,
-            tool_categories: selectedToolCategories,
+            tool_categories: finalToolCategories,
           })
           setLogoFile(null)
           // Optional: Reload agent to get updated logo URL if needed, but avoiding it keeps it fast
@@ -1089,18 +1084,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
                 <Label className="text-xs text-muted-foreground">
                   {t("builds.configForm.model.types.general")}
                 </Label>
-                <TooltipProvider>
-                  <Tooltip delayDuration={300}>
-                    <TooltipTrigger asChild>
-                      <div className="cursor-default">
-                        <Info className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-[200px]">{t("builds.configForm.model.tips.general")}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <InfoTooltip content={t("builds.configForm.model.tips.general")} />
               </div>
               <Select
                 value={modelConfig.general?.toString() || ""}
@@ -1142,18 +1126,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
                     <Label className="text-xs text-muted-foreground">
                       {t("builds.configForm.model.types.smallFast")}
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <div className="cursor-default">
-                            <Info className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-[200px]">{t("builds.configForm.model.tips.smallFast")}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip content={t("builds.configForm.model.tips.smallFast")} />
                   </div>
                   <Select
                     value={modelConfig.small_fast?.toString() || ""}
@@ -1172,18 +1145,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
                     <Label className="text-xs text-muted-foreground">
                       {t("builds.configForm.model.types.visual")}
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <div className="cursor-default">
-                            <Info className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-[200px]">{t("builds.configForm.model.tips.visual")}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip content={t("builds.configForm.model.tips.visual")} />
                   </div>
                   <Select
                     value={modelConfig.visual?.toString() || ""}
@@ -1202,18 +1164,7 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
                     <Label className="text-xs text-muted-foreground">
                       {t("builds.configForm.model.types.compact")}
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip delayDuration={300}>
-                        <TooltipTrigger asChild>
-                          <div className="cursor-default">
-                            <Info className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-[200px]">{t("builds.configForm.model.tips.compact")}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <InfoTooltip content={t("builds.configForm.model.tips.compact")} />
                   </div>
                   <Select
                     value={modelConfig.compact?.toString() || ""}
@@ -1238,9 +1189,12 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
         {/* Knowledge Base - Multi Select */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label>{t("builds.configForm.knowledgeBase.label")}</Label>
+            <div className="flex items-center gap-1.5">
+              <Label>{t("builds.configForm.knowledgeBase.label")}</Label>
+              <InfoTooltip content={t("builds.configForm.model.tips.knowledgeBase")} />
+            </div>
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
               className="text-muted-foreground"
               onClick={() => setIsKbModalOpen(true)}
@@ -1252,7 +1206,12 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
           <MultiSelect
             values={selectedKbs}
-            onValuesChange={setSelectedKbs}
+            onValuesChange={(newValues) => {
+              setSelectedKbs(newValues)
+              if (newValues.length > 0 && !selectedToolCategories.includes("knowledge")) {
+                setSelectedToolCategories(prev => [...prev, "knowledge"])
+              }
+            }}
             options={kbOptions}
             placeholder={t("builds.configForm.knowledgeBase.placeholder")}
           />
@@ -1260,7 +1219,10 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
         {/* Skills - Multi Select */}
         <div className="space-y-2">
-          <Label>{t("builds.configForm.skills.label")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>{t("builds.configForm.skills.label")}</Label>
+            <InfoTooltip content={t("builds.configForm.model.tips.skills")} />
+          </div>
           {skills.length > 0 ? (
             <MultiSelect
               values={selectedSkills}
@@ -1277,7 +1239,10 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
 
         {/* Tools - Multi Select by Category */}
         <div className="space-y-2">
-          <Label>{t("builds.configForm.tools.label")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>{t("builds.configForm.tools.label")}</Label>
+            <InfoTooltip content={t("builds.configForm.model.tips.tools")} />
+          </div>
           {toolCategories.length > 0 ? (
             <MultiSelect
               values={selectedToolCategories}
@@ -1410,35 +1375,49 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       <div className="border-b flex justify-between items-center p-8">
         <div>
           {isEditMode && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-1 mb-2 text-muted-foreground hover:text-foreground"
+            <div
+              className="inline-flex items-center gap-1 mb-2 cursor-pointer hover:text-primary"
               onClick={() => router.push("/build")}
             >
-              <ChevronLeft className="h-4 w-4 mr-1" />
+              <ChevronLeft className="h-4 w-4" />
               {t("builds.editor.header.backToList")}
-            </Button>
+            </div>
           )}
-          <h1 className="text-3xl font-bold mb-1">{t("builds.editor.header.title")}</h1>
+          <h1 className="text-3xl font-bold mb-1">{name || t("builds.editor.header.title")}</h1>
           <p className="text-muted-foreground">{t("builds.editor.header.subtitle")}</p>
         </div>
         <div className="flex items-center gap-4">
-          {isEditMode && !isDirty && originalData?.status === "published" ? (
-            <>
-              <Button variant="outline" onClick={handleUnpublish} disabled={isCreating || loadingAgent}>
+          <Button
+            onClick={handleCreate}
+            disabled={isCreating || loadingAgent || (isEditMode && !isDirty)}
+          >
+            {isCreating
+              ? isEditMode
+                ? t("builds.editor.header.updating")
+                : t("builds.editor.header.creating")
+              : isEditMode
+              ? t("builds.editor.header.update")
+              : t("builds.editor.header.create")}
+          </Button>
+
+          {isEditMode && (
+            originalData?.status === "published" ? (
+              <Button
+                variant="outline"
+                onClick={handleUnpublish}
+                disabled={isCreating || loadingAgent}
+              >
                 {t("builds.editor.header.unpublish")}
               </Button>
-            </>
-          ) : (
-            <Button onClick={isEditMode && !isDirty ? handlePublish : handleCreate} disabled={isCreating || loadingAgent}>
-              {isCreating
-                ? (isEditMode ? t("builds.editor.header.updating") : t("builds.editor.header.creating"))
-                : isEditMode
-                ? (isDirty ? t("builds.editor.header.update") : t("builds.editor.header.publish"))
-                : t("builds.editor.header.create")
-              }
-            </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={handlePublish}
+                disabled={isCreating || loadingAgent || isDirty}
+              >
+                {t("builds.editor.header.publish")}
+              </Button>
+            )
           )}
         </div>
       </div>
@@ -1503,40 +1482,6 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
         </SheetContent>
       </Sheet>
 
-      {/* Knowledge Base Tool Warning Dialog */}
-      <Dialog open={showKbToolWarning} onOpenChange={setShowKbToolWarning}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              {t("builds.editor.kbToolWarning.title")}
-            </DialogTitle>
-            <DialogDescription>
-              {t("builds.editor.kbToolWarning.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200">
-            {t("builds.editor.kbToolWarning.hint")}
-          </div>
-          <DialogFooter className="gap-2 sm:justify-end">
-            <div className="flex w-full sm:w-auto gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowKbToolWarning(false)}>
-                {t("builds.editor.kbToolWarning.cancel")}
-              </Button>
-              <Button onClick={() => {
-                setSelectedToolCategories(prev =>
-                  prev.includes("knowledge") ? prev : [...prev, "knowledge"]
-                )
-                setShowKbToolWarning(false)
-                toast.success(t("builds.editor.kbToolWarning.enabled"))
-              }}>
-                {t("builds.editor.kbToolWarning.enableAndContinue")}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Success Dialog */}
       <Dialog open={showSuccessDialog} onOpenChange={handleDialogClose}>
         <DialogContent>
@@ -1562,8 +1507,17 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       <KnowledgeBaseCreationDialog
         open={isKbModalOpen}
         onOpenChange={setIsKbModalOpen}
-        onSuccess={() => {
+        onSuccess={(createdCollections) => {
           refreshKbs()
+          if (createdCollections && createdCollections.length > 0) {
+            setSelectedKbs(prev => {
+              const newKbs = Array.from(new Set([...prev, ...createdCollections]))
+              return newKbs
+            })
+            if (!selectedToolCategories.includes("knowledge")) {
+              setSelectedToolCategories(prev => [...prev, "knowledge"])
+            }
+          }
         }}
       />
     </div>
