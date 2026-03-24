@@ -150,14 +150,13 @@ pip install -e .
 pip install -e . --group dev
 
 # Install optional extras for additional features
-pip install -e ".[document-parsing]"   # Non-AI document processing libraries
-pip install -e ".[ai-document]"        # AI-related document processing (docling)
-pip install -e ".[postgresql]"         # PostgreSQL database driver
-pip install -e ".[browser]"            # Browser automation (playwright)
-pip install -e ".[deepdoc]"            # AI-enhanced document processing
-pip install -e ".[chromadb]"           # ChromaDB vector database
-pip install -e ".[milvus]"             # Milvus vector database
-pip install -e ".[all]"                # Install all optional extras
+pip install -e ".[document-processing]" # Document processing libraries
+pip install -e ".[ai-document]"         # AI-related document processing (docling)
+pip install -e ".[postgresql]"          # PostgreSQL database driver
+pip install -e ".[browser]"             # Browser automation (playwright)
+pip install -e ".[chromadb]"            # ChromaDB vector database
+pip install -e ".[milvus]"              # Milvus vector database
+pip install -e ".[all]"                 # Install all optional extras
 
 # For development with all features:
 pip install -e ".[all]" --group dev
@@ -169,8 +168,7 @@ pip install -e ".[all]" --group dev
 **Optional Extras:**
 | Extra | Description |
 |-------|-------------|
-| `deepdoc` | AI-enhanced document processing (git dependency) |
-| `document-parsing` | Non-AI document libraries (pdfplumber, unstructured, pymupdf, etc.) |
+| `document-processing` | document processing libraries (pdfplumber, unstructured, pymupdf, etc.) |
 | `ai-document` | AI-related document processing (docling) |
 | `postgresql` | PostgreSQL driver (uses psycopg2-binary; for production consider psycopg2) |
 | `browser` | Browser automation (playwright) |
