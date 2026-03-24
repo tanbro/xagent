@@ -105,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          python3 -m uv sync --group dev --extra document-processing --extra ai-document --extra postgresql --extra browser --extra chromadb --extra milvus
+          python3 -m uv sync --all-extras
 
       - name: Download NLTK data
         shell: bash
