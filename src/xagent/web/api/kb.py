@@ -345,11 +345,6 @@ async def ingest(
             _user.id,
             collection,
         )
-    except (PermissionError, OSError) as e:
-        logger.error("File system error saving file %s: %s", safe_filename, e)
-        raise HTTPException(
-            status_code=403, detail=f"File system error: {str(e)}"
-        ) from e
     except HTTPException:
         # Ensure partial file is removed on early abort (e.g., file too large)
         try:
@@ -448,6 +443,14 @@ async def ingest(
 
     if result.status == "error":
         return JSONResponse(status_code=500, content=result.model_dump())
+    if result.status == "partial":
+        logger.warning(
+            "KB ingest partially completed (collection=%s, filename=%s, user_id=%s): %s",
+            collection,
+            safe_filename,
+            _user.id,
+            result.message,
+        )
 
     return JSONResponse(
         status_code=200,
@@ -970,6 +973,14 @@ async def ingest_web(
 
         if result.status == "error":
             return JSONResponse(status_code=500, content=result.model_dump())
+        if result.status == "partial":
+            logger.warning(
+                "KB web ingest partially completed (collection=%s, start_url=%s, user_id=%s): %s",
+                collection,
+                start_url,
+                _user.id,
+                result.message,
+            )
 
         return result
 
