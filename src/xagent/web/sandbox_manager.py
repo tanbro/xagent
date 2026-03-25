@@ -101,6 +101,8 @@ class SandboxManager:
                 if not src or not dst:
                     logger.warning(f"Invalid sandbox volume: {item}")
                     continue
+                # Normalize paths to resolve any relative components
+                src = os.path.abspath(src)
                 mode = parts[2].strip().lower() if len(parts) > 2 else "ro"
                 if mode not in ("ro", "rw"):
                     logger.warning(f"Invalid sandbox volume mode: {item}, using 'ro'")
@@ -172,7 +174,9 @@ class SandboxManager:
             template = SandboxTemplate(type="image", image=image)
 
             # Merge user-specific volumes
-            user_volumes = self._make_volumes(lifecycle_type, lifecycle_id, ensure_dir=True)
+            user_volumes = self._make_volumes(
+                lifecycle_type, lifecycle_id, ensure_dir=True
+            )
             if user_volumes:
                 existing_volumes = list(config.volumes) if config.volumes else []
                 config.volumes = existing_volumes + user_volumes
@@ -212,13 +216,16 @@ class SandboxManager:
     async def warmup(self) -> None:
         """
         Warmup default image.
+        Uses empty config for warmup to avoid unnecessary volume mounts.
         """
-        image, config = self._get_sandbox_image_and_config()
+        image = os.getenv("SANDBOX_IMAGE", DEFAULT_SANDBOX_IMAGE).strip()
         warmup_name = "__warmup__"
         try:
             template = SandboxTemplate(type="image", image=image)
+            # Use empty config for warmup - no need for volumes/env
+            warmup_config = SandboxConfig()
             async with await self._service.get_or_create(
-                warmup_name, template=template, config=config
+                warmup_name, template=template, config=warmup_config
             ):
                 pass
             await self._service.delete(warmup_name)
