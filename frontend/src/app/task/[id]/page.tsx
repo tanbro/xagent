@@ -415,6 +415,7 @@ function TaskDetailContent() {
               <TaskFileManager
                 taskId={state.taskId}
                 taskStatus={state.currentTask?.status}
+                isProcessing={state.isProcessing}
                 onPreview={(fileId, fileName) => openFilePreview(fileId, fileName)}
               >
                 <div

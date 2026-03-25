@@ -24,11 +24,12 @@ interface FileItem {
 interface TaskFileManagerProps {
   taskId: number | null
   taskStatus?: string
+  isProcessing?: boolean
   children: React.ReactNode
   onPreview: (fileId: string, fileName: string) => void
 }
 
-export function TaskFileManager({ taskId, taskStatus, children, onPreview }: TaskFileManagerProps) {
+export function TaskFileManager({ taskId, taskStatus, isProcessing, children, onPreview }: TaskFileManagerProps) {
   const { t } = useI18n()
   const [files, setFiles] = useState<FileItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -122,14 +123,18 @@ export function TaskFileManager({ taskId, taskStatus, children, onPreview }: Tas
   useEffect(() => {
     const isRunning = taskStatus === 'running'
 
-    if (isOpen && isRunning) {
+    // Auto-refresh when: popover is open AND (task is running OR isProcessing is true)
+    // Using isProcessing as a fallback because it's more reliably updated
+    const shouldAutoRefresh = isOpen && (isRunning || isProcessing)
+
+    if (shouldAutoRefresh) {
       startAutoRefresh()
     } else {
       stopAutoRefresh()
     }
 
     return () => stopAutoRefresh()
-  }, [taskStatus, isOpen])
+  }, [taskStatus, isProcessing, isOpen])
 
   // Cleanup on unmount
   useEffect(() => {
