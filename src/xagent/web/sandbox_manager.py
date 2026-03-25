@@ -78,12 +78,19 @@ class SandboxManager:
                 try:
                     key, value = pair.strip().split("=", 1)
                 except ValueError:
-                    logger.warning(f"Invalid sandbox env config: {pair}")
+                    # Don't log the pair value - it may contain sensitive data
+                    logger.warning(
+                        "Invalid sandbox env config: must be in KEY=value format"
+                    )
                 else:
-                    if (key := key.strip()) and (value := value.strip()):
-                        env[key] = value
+                    key = key.strip()
+                    value = value.strip()
+                    if not key:
+                        logger.warning("Environment variable has empty key")
+                    elif not value:
+                        logger.warning(f"Environment variable {key!r} has empty value")
                     else:
-                        logger.warning(f"Invalid sandbox env config: {pair}")
+                        env[key] = value
             if env:
                 config.env = env
         # VOL
@@ -169,7 +176,14 @@ class SandboxManager:
 
             # Get base image and config from environment variables
             image, config = self._get_sandbox_image_and_config()
-            logger.info("Getting/creating sandbox: image=%r, config=%r", image, config)
+            logger.info(
+                "Getting/creating sandbox: image=%r, cpus=%r, memory=%r, volumes=%r, env_count=%r",
+                image,
+                config.cpus,
+                config.memory,
+                config.volumes,
+                len(config.env or {}),
+            )
 
             template = SandboxTemplate(type="image", image=image)
 

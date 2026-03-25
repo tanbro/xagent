@@ -1,11 +1,11 @@
 """Test sandbox manager functionality."""
 
+import os
 import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from xagent.sandbox.base import SandboxConfig
 from xagent.web.sandbox_manager import (
     SandboxManager,
     _create_boxlite_service,
@@ -332,8 +332,9 @@ class TestSandboxConfigParsing:
 
         # Should expand tilde to absolute path
         src_path = config.volumes[0][0]
+        expected_path = os.path.abspath(os.path.expanduser("~/data"))
         assert "~" not in src_path
-        assert src_path.endswith("/data") or src_path.endswith("/data/data")
+        assert src_path == expected_path
         assert config.volumes[0][1] == "/data"
         assert config.volumes[0][2] == "ro"
 
@@ -435,21 +436,35 @@ class TestSandboxConfigParsing:
 class TestSandboxManagerWarmup:
     """Test sandbox warmup functionality."""
 
-    def test_warmup_uses_empty_config(self):
+    @pytest.mark.asyncio
+    async def test_warmup_uses_empty_config(self):
         """Test warmup uses empty config to avoid unnecessary mounts."""
-        # Test that warmup creates config without volumes/env
-        # even when SANDBOX_VOLUMES and SANDBOX_ENV are set
+        mock_service = MagicMock()
+        manager = SandboxManager(mock_service)
+
+        # Mock the service methods
+        mock_sandbox = MagicMock()
+        mock_sandbox.__aenter__ = MagicMock(return_value=mock_sandbox)
+        mock_sandbox.__aexit__ = MagicMock(return_value=None)
+        mock_service.get_or_create = MagicMock(return_value=mock_sandbox)
+        mock_service.delete = MagicMock(return_value=None)
+
+        # Set environment vars that would normally trigger mounts
         with patch.dict(
             "os.environ",
             {"SANDBOX_VOLUMES": "/nonexistent:/path:ro", "SANDBOX_ENV": "TEST=value"},
             clear=False,
         ):
-            # This is what warmup uses - empty config
-            warmup_config = SandboxConfig()
+            await manager.warmup()
+
+        # Verify get_or_create was called with empty config (no volumes/env)
+        mock_service.get_or_create.assert_called_once()
+        call_args = mock_service.get_or_create.call_args
+        config = call_args[1]["config"]
 
         # Verify warmup config is empty (no volumes/env)
-        assert warmup_config.volumes is None
-        assert warmup_config.env is None
+        assert config.volumes is None
+        assert config.env is None
         # Should have default cpus/memory from SandboxConfig
-        assert warmup_config.cpus == 1
-        assert warmup_config.memory == 512
+        assert config.cpus == 1
+        assert config.memory == 512
