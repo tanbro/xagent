@@ -182,6 +182,85 @@ def _infer_backfill_task_id(
     return task_id if task is not None else None
 
 
+def _backfill_task_files(db: Session, task_id: int, user_id: int) -> int:
+    """
+    Backfill files for a specific task.
+
+    Scans the task directory for files that exist on disk but are not
+    registered in the database, and creates database records for them.
+
+    Args:
+        db: Database session
+        task_id: The task ID to backfill files for
+        user_id: The user ID who owns the task
+
+    Returns:
+        The number of files backfilled
+    """
+    if not UPLOADS_DIR.exists():
+        return 0
+
+    user_root = UPLOADS_DIR / f"user_{user_id}"
+    if not user_root.exists() or not user_root.is_dir():
+        return 0
+
+    # Check both possible task directory naming conventions
+    task_dirs = [
+        user_root / f"web_task_{task_id}",
+        user_root / f"task_{task_id}",
+    ]
+
+    task_dir = None
+    for candidate_dir in task_dirs:
+        if candidate_dir.exists() and candidate_dir.is_dir():
+            task_dir = candidate_dir
+            break
+
+    if task_dir is None:
+        return 0
+
+    # Get existing storage paths for this task
+    existing_paths = {
+        row[0]
+        for row in db.query(UploadedFile.storage_path)
+        .filter(UploadedFile.task_id == task_id, UploadedFile.user_id == user_id)
+        .all()
+    }
+
+    created = 0
+    for candidate in task_dir.rglob("*"):
+        if not candidate.is_file():
+            continue
+
+        storage_path = str(candidate)
+        if storage_path in existing_paths:
+            continue
+
+        file_record = UploadedFile(
+            user_id=user_id,
+            task_id=task_id,
+            filename=candidate.name,
+            storage_path=storage_path,
+            mime_type=_guess_media_type(candidate.name),
+            file_size=candidate.stat().st_size,
+        )
+        db.add(file_record)
+        existing_paths.add(storage_path)
+        created += 1
+
+    if created > 0:
+        try:
+            db.commit()
+            logger.info(f"Backfilled {created} files for task {task_id}")
+        except IntegrityError:
+            db.rollback()
+            logger.warning(
+                f"Backfill for task {task_id} hit unique constraint race; rolled back safely"
+            )
+
+    return created
+
+
 def _backfill_uploaded_file_records(db: Session, user: User) -> None:
     if not UPLOADS_DIR.exists():
         return
@@ -544,6 +623,42 @@ async def list_files(
         )
 
     return {"files": files, "total_count": len(files)}
+
+
+@file_router.post("/task/{task_id}/backfill")
+async def backfill_task_files(
+    task_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Backfill files for a specific task.
+
+    Scans the task directory for files that exist on disk but are not
+    registered in the database, and creates database records for them.
+
+    Available to all users for their own tasks, and to admins for any task.
+    """
+    from ..models.task import Task
+
+    # Permission check: only task owner or admin
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task_user_id = int(getattr(task, "user_id"))
+    if task_user_id != _user_id_value(user) and not _is_admin_user(user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Perform backfill
+    count = _backfill_task_files(db, task_id, task_user_id)
+
+    return {
+        "success": True,
+        "message": f"Backfilled {count} files for task {task_id}",
+        "task_id": task_id,
+        "count": count,
+    }
 
 
 @file_router.get("/task/{task_id}")

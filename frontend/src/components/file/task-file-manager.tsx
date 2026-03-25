@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -23,21 +23,57 @@ interface FileItem {
 
 interface TaskFileManagerProps {
   taskId: number | null
+  taskStatus?: string
   children: React.ReactNode
   onPreview: (fileId: string, fileName: string) => void
 }
 
-export function TaskFileManager({ taskId, children, onPreview }: TaskFileManagerProps) {
+export function TaskFileManager({ taskId, taskStatus, children, onPreview }: TaskFileManagerProps) {
   const { t } = useI18n()
   const [files, setFiles] = useState<FileItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState(false)
 
-  const loadFiles = async () => {
-    if (!isOpen) return;  // Don't load if popover isn't open
-    if (!taskId) return;  // Don't load if no task selected
+  // Auto-refresh interval ref
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const AUTO_REFRESH_INTERVAL = 10000 // 10 seconds
+
+  // Backfill files for the task
+  const backfillFiles = async (): Promise<boolean> => {
+    if (!taskId) return false
+
+    try {
+      const response = await apiRequest(`${getApiUrl()}/api/files/task/${taskId}/backfill`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          console.log(`Backfilled ${data.count} files for task ${taskId}`)
+          return true
+        }
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to backfill files:', error)
+      return false
+    }
+  }
+
+  // Load files with optional backfill
+  const loadFiles = async (doBackfill = false) => {
+    if (!isOpen) return  // Don't load if popover isn't open
+    if (!taskId) return  // Don't load if no task selected
     setIsLoading(true)
     try {
+      // Optional: backfill first
+      if (doBackfill) {
+        await backfillFiles()
+      }
+
+      // Then load files
       const response = await apiRequest(`${getApiUrl()}/api/files/task/${taskId}`)
       if (response.ok) {
         const data = await response.json()
@@ -52,11 +88,53 @@ export function TaskFileManager({ taskId, children, onPreview }: TaskFileManager
     }
   }
 
+  // Start auto-refresh
+  const startAutoRefresh = () => {
+    if (autoRefreshIntervalRef.current) return
+
+    setIsAutoRefreshing(true)
+    autoRefreshIntervalRef.current = setInterval(() => {
+      loadFiles(true)  // Include backfill on auto-refresh
+    }, AUTO_REFRESH_INTERVAL)
+  }
+
+  // Stop auto-refresh
+  const stopAutoRefresh = () => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current)
+      autoRefreshIntervalRef.current = null
+    }
+    setIsAutoRefreshing(false)
+  }
+
+  // Effect: Load files when popover opens
   useEffect(() => {
     if (isOpen) {
-      loadFiles()
+      // On initial open, just fetch without backfill (fast)
+      loadFiles(false)
+    } else {
+      // Stop auto-refresh when popover closes
+      stopAutoRefresh()
     }
   }, [taskId, isOpen])
+
+  // Effect: Auto-refresh based on task status
+  useEffect(() => {
+    const isRunning = taskStatus === 'running'
+
+    if (isOpen && isRunning) {
+      startAutoRefresh()
+    } else {
+      stopAutoRefresh()
+    }
+
+    return () => stopAutoRefresh()
+  }, [taskStatus, isOpen])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopAutoRefresh()
+  }, [])
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
@@ -81,7 +159,7 @@ export function TaskFileManager({ taskId, children, onPreview }: TaskFileManager
   }
 
   const renderFileList = (fileList: FileItem[], emptyMsg: string) => {
-    if (isLoading) {
+    if (isLoading && fileList.length === 0) {
       return (
         <div className="w-full flex flex-col items-center justify-center py-8 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin mb-2" />
@@ -145,11 +223,16 @@ export function TaskFileManager({ taskId, children, onPreview }: TaskFileManager
         <div className="flex items-center justify-between p-3 border-b bg-muted/20">
           <h3 className="font-medium text-sm flex items-center gap-2">
             {t('files.header.title')}
+            {isAutoRefreshing && (
+              <span className="flex items-center" title="Auto-refreshing...">
+                <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+              </span>
+            )}
           </h3>
           <Button
             variant="ghost"
             size="icon"
-            onClick={loadFiles}
+            onClick={() => loadFiles(true)}  // Manual refresh with backfill
             disabled={isLoading}
             className="h-6 w-6"
             title={t('common.refresh')}
