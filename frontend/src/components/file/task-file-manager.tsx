@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,7 +41,7 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
   const AUTO_REFRESH_INTERVAL = 10000 // 10 seconds
 
   // Backfill files for the task
-  const backfillFiles = async (): Promise<boolean> => {
+  const backfillFiles = useCallback(async (): Promise<boolean> => {
     if (!taskId) return false
 
     try {
@@ -52,7 +52,6 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
-          console.log(`Backfilled ${data.count} files for task ${taskId}`)
           return true
         }
       }
@@ -61,12 +60,13 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
       console.error('Failed to backfill files:', error)
       return false
     }
-  }
+  }, [taskId])
 
   // Load files with optional backfill
-  const loadFiles = async (doBackfill = false) => {
+  const loadFiles = useCallback(async (doBackfill = false) => {
     if (!isOpen) return  // Don't load if popover isn't open
     if (!taskId) return  // Don't load if no task selected
+
     setIsLoading(true)
     try {
       // Optional: backfill first
@@ -87,32 +87,32 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [isOpen, taskId])
 
   // Start auto-refresh
-  const startAutoRefresh = () => {
+  const startAutoRefresh = useCallback(() => {
     if (autoRefreshIntervalRef.current) return
 
     setIsAutoRefreshing(true)
     autoRefreshIntervalRef.current = setInterval(() => {
       loadFiles(true)  // Include backfill on auto-refresh
     }, AUTO_REFRESH_INTERVAL)
-  }
+  }, [loadFiles])
 
   // Stop auto-refresh
-  const stopAutoRefresh = () => {
+  const stopAutoRefresh = useCallback(() => {
     if (autoRefreshIntervalRef.current) {
       clearInterval(autoRefreshIntervalRef.current)
       autoRefreshIntervalRef.current = null
     }
     setIsAutoRefreshing(false)
-  }
+  }, [])
 
   // Effect: Load files when popover opens
   useEffect(() => {
     if (isOpen) {
-      // On initial open, just fetch without backfill (fast)
-      loadFiles(false)
+      // On open, always do a full backfill + refresh to catch AI-generated files
+      loadFiles(true)
     } else {
       // Stop auto-refresh when popover closes
       stopAutoRefresh()
@@ -124,7 +124,6 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
     const isRunning = taskStatus === 'running'
 
     // Auto-refresh when: popover is open AND (task is running OR isProcessing is true)
-    // Using isProcessing as a fallback because it's more reliably updated
     const shouldAutoRefresh = isOpen && (isRunning || isProcessing)
 
     if (shouldAutoRefresh) {
@@ -134,7 +133,7 @@ export function TaskFileManager({ taskId, taskStatus, isProcessing, children, on
     }
 
     return () => stopAutoRefresh()
-  }, [taskStatus, isProcessing, isOpen])
+  }, [taskStatus, isProcessing, isOpen, startAutoRefresh, stopAutoRefresh])
 
   // Cleanup on unmount
   useEffect(() => {
