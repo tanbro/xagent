@@ -2487,6 +2487,7 @@ Build when you need.`
     llmResponse: "LLM 响应",
     unknownTool: "未知工具",
     executeTool: "执行工具: {tool}",
+    sandboxedExecution: "沙盒安全运行",
     toolExecutionFinished: "工具执行完成",
     unknownError: "未知错误",
     executionFailed: "执行失败",
