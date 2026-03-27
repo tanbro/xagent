@@ -9,6 +9,8 @@ import { getApiUrl, getAuthHeaders } from "@/lib/utils"
 import { apiRequest } from "@/lib/api-wrapper"
 import { useAuth } from "@/contexts/auth-context"
 import { useI18n } from "@/contexts/i18n-context"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { toast } from "sonner"
 import {
   MessageSquare,
   Search,
@@ -151,8 +153,13 @@ export function VibePage() {
     )
   }
 
-  const deleteTask = async (taskId: string) => {
-    if (!confirm(t('vibe.actions.delete_confirm'))) return
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
+  const [isDeletingTask, setIsDeletingTask] = useState(false)
+
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return
+    const taskId = taskToDelete
+    setIsDeletingTask(true)
 
     try {
       const response = await apiRequest(`${getApiUrl()}/api/chat/task/${taskId}`, {
@@ -162,10 +169,20 @@ export function VibePage() {
 
       if (response.ok) {
         setTasks(prev => prev.filter(task => task.task_id !== taskId))
+        setTaskToDelete(null)
+      } else {
+        toast.error(t('common.deleteFailed'))
       }
     } catch (error) {
       console.error('Failed to delete task:', error)
+      toast.error(t('common.deleteFailed'))
+    } finally {
+      setIsDeletingTask(false)
     }
+  }
+
+  const deleteTask = (taskId: string) => {
+    setTaskToDelete(taskId)
   }
 
   return (
@@ -401,6 +418,14 @@ export function VibePage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!taskToDelete}
+        onOpenChange={(open) => !open && setTaskToDelete(null)}
+        onConfirm={confirmDeleteTask}
+        isLoading={isDeletingTask}
+        description={t('vibe.actions.delete_confirm')}
+      />
     </div>
   )
 }

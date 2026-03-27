@@ -9,6 +9,8 @@ import { useI18n } from "@/contexts/i18n-context"
 import { useRouter, useSearchParams } from "next/navigation"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { toast } from "sonner"
 
 interface Agent {
   id: number
@@ -83,8 +85,13 @@ export default function BuildsPage() {
     }
   }
 
-  const handleDelete = async (agentId: number) => {
-    if (!confirm(t('builds.list.actions.deleteConfirm'))) return
+  const [agentToDelete, setAgentToDelete] = useState<number | null>(null)
+  const [isDeletingAgent, setIsDeletingAgent] = useState(false)
+
+  const confirmDeleteAgent = async () => {
+    if (agentToDelete === null) return
+    const agentId = agentToDelete
+    setIsDeletingAgent(true)
 
     try {
       const response = await apiRequest(`${getApiUrl()}/api/agents/${agentId}`, {
@@ -92,10 +99,20 @@ export default function BuildsPage() {
       })
       if (response.ok) {
         fetchAgents() // Refresh list
+        setAgentToDelete(null)
+      } else {
+        toast.error(t('common.deleteFailed'))
       }
     } catch (error) {
       console.error("Failed to delete agent:", error)
+      toast.error(t('common.deleteFailed'))
+    } finally {
+      setIsDeletingAgent(false)
     }
+  }
+
+  const handleDelete = (agentId: number) => {
+    setAgentToDelete(agentId)
   }
 
   // Filter agents based on search term
@@ -290,6 +307,14 @@ export default function BuildsPage() {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={agentToDelete !== null}
+        onOpenChange={(open) => !open && setAgentToDelete(null)}
+        onConfirm={confirmDeleteAgent}
+        isLoading={isDeletingAgent}
+        description={t('builds.list.actions.deleteConfirm')}
+      />
     </div>
   )
 }

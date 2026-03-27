@@ -20,6 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select } from "@/components/ui/select"
 import { MultiSelect } from "@/components/ui/multi-select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Switch } from "@/components/ui/switch"
 import { getApiUrl } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -602,8 +603,13 @@ export function ModelsPage() {
     setIsDialogOpen(true)
   }
 
-  const handleDelete = async (modelId: string) => {
-    if (!confirm(t('models.deleteConfirm'))) return
+  const [modelToDelete, setModelToDelete] = useState<string | null>(null)
+  const [isDeletingModel, setIsDeletingModel] = useState(false)
+
+  const confirmDeleteModel = async () => {
+    if (!modelToDelete) return
+    const modelId = modelToDelete
+    setIsDeletingModel(true)
 
     try {
       const response = await apiRequest(getModelDetailUrl(modelId), {
@@ -622,9 +628,16 @@ export function ModelsPage() {
       if (viewMode === 'list') {
         setManagingProviderModels(prev => prev.filter(m => m.model_id !== modelId))
       }
+      setModelToDelete(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('models.errors.deleteFailed'))
+    } finally {
+      setIsDeletingModel(false)
     }
+  }
+
+  const handleDelete = (modelId: string) => {
+    setModelToDelete(modelId)
   }
 
   const closeDialog = () => {
@@ -1507,6 +1520,14 @@ export function ModelsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ConfirmDialog
+        isOpen={!!modelToDelete}
+        onOpenChange={(open) => !open && setModelToDelete(null)}
+        onConfirm={confirmDeleteModel}
+        isLoading={isDeletingModel}
+        description={t('models.deleteConfirm')}
+      />
       </div>
     </div>
   )

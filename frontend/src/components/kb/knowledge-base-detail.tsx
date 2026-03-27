@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { apiRequest } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
 import { appendIngestionConfigToFormData } from "@/lib/ingestion-form"
@@ -275,10 +276,13 @@ export function KnowledgeBaseDetailContent({ collectionName }: { collectionName:
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const handleDeleteDocument = async (fileName: string) => {
-    if (!confirm(t("kb.detail.uploaded.confirmDelete") || "Are you sure you want to delete this document?")) {
-      return
-    }
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
+  const [isDeletingDocument, setIsDeletingDocument] = useState(false)
+
+  const confirmDeleteDocument = async () => {
+    if (!documentToDelete) return
+    const fileName = documentToDelete
+    setIsDeletingDocument(true)
 
     try {
       console.log("Deleting document:", fileName)
@@ -309,10 +313,17 @@ export function KnowledgeBaseDetailContent({ collectionName }: { collectionName:
       // Reload collection info
       await fetchCollectionInfo()
       console.log("Collection info refreshed")
+      setDocumentToDelete(null)
     } catch (error) {
       console.error("Delete error:", error)
       toast.error(error instanceof Error ? error.message : t("kb.detail.errors.deleteFailed"))
+    } finally {
+      setIsDeletingDocument(false)
     }
+  }
+
+  const handleDeleteDocument = (fileName: string) => {
+    setDocumentToDelete(fileName)
   }
 
   const doUpload = async () => {
@@ -1274,6 +1285,13 @@ export function KnowledgeBaseDetailContent({ collectionName }: { collectionName:
             )}
           </DialogContent>
         </Dialog>
+      <ConfirmDialog
+        isOpen={!!documentToDelete}
+        onOpenChange={(open) => !open && setDocumentToDelete(null)}
+        onConfirm={confirmDeleteDocument}
+        isLoading={isDeletingDocument}
+        description={t("kb.detail.uploaded.confirmDelete")}
+      />
     </div>
   )
 }
