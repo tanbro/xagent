@@ -940,6 +940,68 @@ class ReActPattern(AgentPattern):
                 # Update stored messages
                 self._last_messages = messages.copy()
 
+            except PatternExecutionError as e:
+                # PatternExecutionError indicates a "pattern failure" - the LLM returned
+                # invalid format (RecursionError, JSONDecodeError, ValidationError, etc.)
+                # Unlike task execution failures, these should be converted to observations
+                # so the LLM can see the error and attempt to correct the format.
+
+                # Get error message from exception
+                error_msg = str(e)
+
+                # Generate insights and store memories even for failures
+                try:
+                    await self._generate_and_store_react_memories(
+                        task_description,
+                        f"Pattern execution error at iteration {iteration + 1}: {error_msg}",
+                        iteration + 1,
+                        messages,
+                    )
+                except Exception as mem_error:
+                    logger.error(f"Failed to store failure memories: {mem_error}")
+
+                # Trace error
+                await trace_error(
+                    self.tracer,
+                    task_id,
+                    step_id,
+                    error_type="PatternExecutionError",
+                    error_message=f"Iteration {iteration + 1} failed with pattern error: {error_msg}",
+                    data={
+                        "task": task_description[:100],
+                        "messages_count": len(messages),
+                        "iteration": iteration + 1,
+                        "step_id": step_id,
+                        "step_name": getattr(self, "_current_step_name", "main"),
+                        "action_id": action_id,
+                        "pattern_error_context": e.context,
+                    },
+                )
+
+                # Build observation message from the error
+                error_observation = f"Pattern execution error: {error_msg}"
+                if e.context:
+                    # Add useful context information (truncated if too long)
+                    context_str = str(e.context)
+                    if len(context_str) > 500:
+                        context_str = context_str[:500] + "..."
+                    error_observation += f"\nError context: {context_str}"
+
+                logger.warning(
+                    f"Iteration {iteration + 1} failed with pattern error: {error_msg}. "
+                    f"Converting to observation so LLM can see and retry."
+                )
+
+                # Add to messages as observation - this is the KEY FIX
+                # LLM will see this error in the next iteration and can try to correct the format
+                messages.append(
+                    {"role": "user", "content": f"Observation: {error_observation}"}
+                )
+                self._last_messages = messages.copy()
+
+                # Continue to next iteration - LLM now has error context to recover
+                continue
+
             except Exception as e:
                 # Generate insights and store memories even for failures
                 try:
@@ -1628,6 +1690,18 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
             )
             raise
 
+        # Debug: Log the response (with preview for long responses)
+        response_preview = (
+            str(response)[:200] + "..."
+            if response and len(str(response)) > 200
+            else str(response)
+        )
+        logger.debug(
+            "React received LLM response:\n"
+            f"  - Response type: {type(response).__name__}\n"
+            f"  - Response length: {len(str(response)) if response else 0} chars\n"
+            f"  - Response preview: {response_preview}"
+        )
         # Handle None response
         if response is None:
             await log_llm_completion(response, False, None)
@@ -1767,6 +1841,8 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
                 action_data = repaired
 
             normalized_action_data = self._normalize_action_data(action_data)
+
+        try:
             action = Action.model_validate(normalized_action_data)
             await log_llm_completion(
                 normalized_action_data, action.type == "tool_call", action.reasoning
@@ -1812,6 +1888,29 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
                     )
 
             return action
+        except RecursionError as e:
+            # RecursionError means JSON is too deeply nested
+            # This is a pattern failure - raise PatternExecutionError so it gets
+            # converted to observation and LLM can see the error.
+            # Raise error for retry.
+            logger.error(
+                f"RecursionError in JSON repair: JSON too deeply nested. "
+                f"Content length: {len(content) if content else 0}. "
+                f"This indicates the LLM returned malformed JSON with excessive nesting."
+            )
+            raise PatternExecutionError(
+                pattern_name="ReAct",
+                message=f"JSON parsing failed due to excessive nesting: {str(e)}",
+                context={
+                    "error_type": "RecursionError",
+                    "content_length": len(content) if content else 0,
+                    "content_preview": (content[:200] + "...")
+                    if content and len(content) > 200
+                    else content,
+                    "suggestion": "The LLM returned JSON with excessive nesting. This may indicate a generation loop or malformed response.",
+                },
+                cause=e,
+            )
         except json.JSONDecodeError as e:
             logging.info(f"invalid json response: {content}")
             # JSON parsing failed - raise error for retry
