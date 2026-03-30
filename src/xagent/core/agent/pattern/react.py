@@ -129,6 +129,26 @@ class Action(BaseModel):
         }
 
 
+def _truncate_for_display(
+    s: Optional[str], max_len: int = 200, suffix: str = "..."
+) -> str:
+    """Truncate string for display/logging to avoid excessive length.
+
+    Args:
+        s: String to truncate (None returns empty string)
+        max_len: Maximum length before truncation
+        suffix: Suffix to add when truncated
+
+    Returns:
+        Truncated string if longer than max_len, original string otherwise
+    """
+    if not s:
+        return ""
+    if len(s) <= max_len:
+        return s
+    return s[:max_len] + suffix
+
+
 class ToolRegistry:
     """Registry for managing available tools."""
 
@@ -982,9 +1002,7 @@ class ReActPattern(AgentPattern):
                 error_observation = f"Pattern execution error: {error_msg}"
                 if e.context:
                     # Add useful context information (truncated if too long)
-                    context_str = str(e.context)
-                    if len(context_str) > 500:
-                        context_str = context_str[:500] + "..."
+                    context_str = _truncate_for_display(str(e.context), max_len=500)
                     error_observation += f"\nError context: {context_str}"
 
                 logger.warning(
@@ -1691,11 +1709,7 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
             raise
 
         # Debug: Log the response (with preview for long responses)
-        response_preview = (
-            str(response)[:200] + "..."
-            if response and len(str(response)) > 200
-            else str(response)
-        )
+        response_preview = _truncate_for_display(str(response), max_len=200)
         logger.debug(
             "React received LLM response:\n"
             f"  - Response type: {type(response).__name__}\n"
@@ -1904,9 +1918,7 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
                 context={
                     "error_type": "RecursionError",
                     "content_length": len(content) if content else 0,
-                    "content_preview": (content[:200] + "...")
-                    if content and len(content) > 200
-                    else content,
+                    "content_preview": _truncate_for_display(content, max_len=200),
                     "suggestion": "The LLM returned JSON with excessive nesting. This may indicate a generation loop or malformed response.",
                 },
                 cause=e,
@@ -1922,9 +1934,7 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
                     "response": response,
                     "json_error": str(e),
                     "content_length": len(content),
-                    "content_preview": content[:200] + "..."
-                    if len(content) > 200
-                    else content,
+                    "content_preview": _truncate_for_display(content, max_len=200),
                 },
             )
         except ValidationError as e:
