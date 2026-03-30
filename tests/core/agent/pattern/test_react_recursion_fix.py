@@ -344,9 +344,11 @@ async def test_pattern_execution_error_converted_to_observation():
         # 4. Second call's messages include the error observation
         second_call_messages = messages_history[1] if len(messages_history) > 1 else []
         error_observation_found = any(
-            "Pattern execution error" in msg.get("content", "")
-            or "Observation:" in msg.get("content", "")
-            and "JSON" in msg.get("content", "")
+            "Failed to parse your response" in msg.get("content", "")
+            or (
+                "Observation:" in msg.get("content", "")
+                and "JSON" in msg.get("content", "")
+            )
             for msg in second_call_messages
         )
         assert error_observation_found, (

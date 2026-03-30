@@ -952,6 +952,13 @@ class ReActPattern(AgentPattern):
                         "execution_history": messages,
                         "pattern": "react",
                     }
+                elif result["type"] != "observation":
+                    # Defensive programming: should never happen
+                    # result["type"] must be either "final_answer" or "observation"
+                    raise PatternExecutionError(
+                        pattern_name="ReAct",
+                        message=f"Unknown result type: {result['type']}",
+                    )
 
                 # Add observation to conversation for tool results
                 observation_content = f"Tool result from {result.get('tool_name', 'unknown')}:\n{result['content']}\n\nBased on this result, if you have enough information to answer the user's question, provide your final answer. Otherwise, call another tool."
@@ -999,7 +1006,8 @@ class ReActPattern(AgentPattern):
                 )
 
                 # Build observation message from the error
-                error_observation = f"Pattern execution error: {error_msg}"
+                # Use LLM-friendly language: "Failed to parse your response" instead of technical jargon
+                error_observation = f"Failed to parse your response: {error_msg}"
                 if e.context:
                     # Add useful context information (truncated if too long)
                     context_str = _truncate_for_display(str(e.context), max_len=500)
