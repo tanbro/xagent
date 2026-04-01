@@ -68,6 +68,7 @@ from ..kb_physical_sync import collection_physical_lock, move_collection_dir_to_
 from ..models.database import get_db
 from ..models.uploaded_file import UploadedFile
 from ..models.user import User
+from ..utils.file import find_file_by_path, to_relative_path
 from .cloud_storage import get_google_credentials
 
 T = TypeVar("T", bound=Callable[..., Any])
@@ -355,12 +356,7 @@ async def ingest(
         raise
 
     # Register file in unified file management (file_id) for /api/files/list and file_id download/preview/delete
-    storage_path_str = str(file_path)
-    existing = (
-        db.query(UploadedFile)
-        .filter(UploadedFile.storage_path == storage_path_str)
-        .first()
-    )
+    existing = find_file_by_path(db, file_path, int(_user.id))
     if existing:
         existing.file_size = int(total_size)  # type: ignore[assignment]
         existing.mime_type = getattr(file, "content_type", None) or existing.mime_type
@@ -377,7 +373,7 @@ async def ingest(
         file_record = UploadedFile(
             user_id=int(_user.id),
             filename=safe_filename,
-            storage_path=storage_path_str,
+            storage_path=to_relative_path(file_path, int(_user.id)),
             mime_type=mime_type,
             file_size=int(total_size),
         )

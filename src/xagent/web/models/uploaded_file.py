@@ -1,9 +1,11 @@
 import uuid
+from pathlib import Path
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
+from ..config import UPLOADS_DIR
 from .database import Base
 
 
@@ -31,6 +33,28 @@ class UploadedFile(Base):  # type: ignore
 
     user = relationship("User", back_populates="uploaded_files")
     task = relationship("Task", back_populates="uploaded_files")
+
+    @property
+    def absolute_path(self) -> Path:
+        """Get absolute file path.
+
+        Handles both relative and absolute paths in storage_path for backward compatibility.
+        - If storage_path is absolute, returns as-is (old data)
+        - If storage_path is relative, resolves against UPLOADS_DIR/user_{user_id}
+
+        Returns:
+            Absolute Path to the file
+        """
+
+        stored = Path(self.storage_path)  # pyright: ignore[reportArgumentType]
+
+        # If already absolute (old data), return as-is
+        if stored.is_absolute():
+            return stored
+
+        # If relative (new data), resolve to absolute
+        user_root = UPLOADS_DIR / f"user_{self.user_id}"
+        return (user_root / self.storage_path).resolve()
 
     def __repr__(self) -> str:
         return f"<UploadedFile(file_id={self.file_id}, filename='{self.filename}', user_id={self.user_id})>"

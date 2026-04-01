@@ -31,6 +31,7 @@ from ..models.user import User
 from ..tools.config import WebToolConfig
 from ..user_isolated_memory import UserContext
 from ..utils.db_timezone import safe_timestamp_to_unix
+from ..utils.file import to_relative_path
 
 logger = logging.getLogger(__name__)
 
@@ -401,11 +402,33 @@ def _normalize_file_outputs(
             normalized_relative_path
         )
 
-        file_record = (
-            db.query(UploadedFile)
-            .filter(UploadedFile.storage_path == str(resolved_path))
-            .first()
-        )
+        # Handle both absolute and relative paths in storage_path
+        file_record = None
+        if resolved_path.is_absolute():
+            # Try exact match (old data) then relative path (new data)
+            file_record = (
+                db.query(UploadedFile)
+                .filter(UploadedFile.storage_path == str(resolved_path))
+                .first()
+            )
+            if file_record is None:
+                try:
+                    relative = to_relative_path(resolved_path, task_user_id)
+                    file_record = (
+                        db.query(UploadedFile)
+                        .filter(UploadedFile.storage_path == relative)
+                        .first()
+                    )
+                except ValueError:
+                    pass
+        else:
+            # Relative path
+            file_record = (
+                db.query(UploadedFile)
+                .filter(UploadedFile.storage_path == str(resolved_path))
+                .first()
+            )
+
         if file_record is None and item_file_id:
             file_record = (
                 db.query(UploadedFile)
@@ -419,7 +442,7 @@ def _normalize_file_outputs(
                 user_id=task_user_id,
                 task_id=task_id,
                 filename=item_filename or resolved_path.name,
-                storage_path=str(resolved_path),
+                storage_path=to_relative_path(resolved_path, task_user_id),
                 mime_type=None,
                 file_size=int(resolved_path.stat().st_size),
             )
@@ -861,11 +884,36 @@ async def redirect_legacy_preview(
         raise HTTPException(status_code=404, detail="Legacy preview target not found")
 
     resolved_path, relative_path = resolved_info
-    file_record = (
-        db.query(UploadedFile)
-        .filter(UploadedFile.storage_path == str(resolved_path))
-        .first()
-    )
+
+    # Handle both absolute and relative paths in storage_path
+    file_record = None
+    if resolved_path.is_absolute():
+        # Try exact match (old data) then relative path (new data)
+        file_record = (
+            db.query(UploadedFile)
+            .filter(UploadedFile.storage_path == str(resolved_path))
+            .first()
+        )
+        if file_record is None:
+            try:
+                owner_info = _infer_owner_from_relative_path(db, relative_path)
+                if owner_info:
+                    owner_user_id, _task_id = owner_info
+                    rel_path = to_relative_path(resolved_path, owner_user_id)
+                    file_record = (
+                        db.query(UploadedFile)
+                        .filter(UploadedFile.storage_path == rel_path)
+                        .first()
+                    )
+            except ValueError:
+                pass
+    else:
+        # Relative path
+        file_record = (
+            db.query(UploadedFile)
+            .filter(UploadedFile.storage_path == str(resolved_path))
+            .first()
+        )
 
     if file_record is None:
         owner_info = _infer_owner_from_relative_path(db, relative_path)
@@ -880,7 +928,7 @@ async def redirect_legacy_preview(
             user_id=owner_user_id,
             task_id=task_id,
             filename=resolved_path.name,
-            storage_path=str(resolved_path),
+            storage_path=to_relative_path(resolved_path, owner_user_id),
             mime_type=None,
             file_size=int(resolved_path.stat().st_size),
         )
@@ -1040,7 +1088,7 @@ async def handle_file_upload_for_task(
                     user_id=int(cast(Any, user.id)),
                     task_id=task_id,
                     filename=normalized_file_name,
-                    storage_path=str(target_path),
+                    storage_path=to_relative_path(target_path, int(cast(Any, user.id))),
                     mime_type=file_type,
                     file_size=int(file_size),
                 )
@@ -2769,7 +2817,9 @@ async def handle_build_preview_execution(
                             user_id=int(cast(Any, user.id)),
                             task_id=None,
                             filename=normalized_file_name,
-                            storage_path=str(target_path),
+                            storage_path=to_relative_path(
+                                target_path, int(cast(Any, user.id))
+                            ),
                             mime_type=file_type,
                             file_size=int(file_size),
                         )

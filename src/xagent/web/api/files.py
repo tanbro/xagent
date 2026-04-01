@@ -22,6 +22,7 @@ from ..config import (
 from ..models.database import get_db
 from ..models.uploaded_file import UploadedFile
 from ..models.user import User
+from ..utils.file import find_file_by_path, to_relative_path
 from .legacy_file import (
     infer_user_id_from_legacy_path,
     is_valid_uuid,
@@ -57,7 +58,7 @@ def _is_admin_user(user: User) -> bool:
 
 
 def _file_storage_path_value(file_record: UploadedFile) -> str:
-    return str(getattr(file_record, "storage_path"))
+    return str(file_record.absolute_path)
 
 
 def _file_name_value(file_record: UploadedFile) -> str:
@@ -221,7 +222,7 @@ def _backfill_uploaded_file_records(db: Session, user: User) -> None:
                 user_id=target_user_id,
                 task_id=_infer_backfill_task_id(db, candidate, target_user_id),
                 filename=candidate.name,
-                storage_path=storage_path,
+                storage_path=to_relative_path(candidate, target_user_id),
                 mime_type=_guess_media_type(candidate.name),
                 file_size=candidate.stat().st_size,
             )
@@ -279,7 +280,7 @@ def _resolve_file_path(
         if file_record:
             return (
                 file_record,
-                Path(_file_storage_path_value(file_record)),
+                file_record.absolute_path,
                 _file_user_id_value(file_record),
             )
 
@@ -307,11 +308,8 @@ def _resolve_file_path(
         raise HTTPException(status_code=404, detail="File not found")
 
     # Try to find a matching database record (might exist for backfilled files)
-    file_record = (
-        db.query(UploadedFile)
-        .filter(UploadedFile.storage_path == str(file_path))
-        .first()
-    )
+    # Handle both absolute and relative paths in storage_path column
+    file_record = find_file_by_path(db, file_path, owner_user_id)
 
     return (file_record, file_path, owner_user_id)
 
@@ -470,7 +468,7 @@ async def upload_file(
             user_id=_user_id_value(user),
             task_id=parsed_task_id,
             filename=Path(uploaded.filename).name,
-            storage_path=str(target_path),
+            storage_path=to_relative_path(target_path, _user_id_value(user)),
             mime_type=uploaded.content_type,
             file_size=len(content),
         )
