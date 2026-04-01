@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from _typeshed import StrPath
 
 
-def to_relative_path(absolute_path: Path, user_id: Optional[int] = None) -> str:
+def to_relative_path(absolute_path: StrPath, user_id: Optional[int] = None) -> str:
     """Convert absolute path to relative path (POSIX format).
 
     Args:
@@ -32,6 +32,7 @@ def to_relative_path(absolute_path: Path, user_id: Optional[int] = None) -> str:
     Raises:
         ValueError: If path is not within UPLOADS_DIR (caught by caller)
     """
+    absolute_path = Path(absolute_path)
     try:
         if user_id:
             base = UPLOADS_DIR / f"user_{user_id}"
@@ -43,7 +44,7 @@ def to_relative_path(absolute_path: Path, user_id: Optional[int] = None) -> str:
         return absolute_path.as_posix()
 
 
-def to_absolute_path(relative_path: str, user_id: Optional[int] = None) -> Path:
+def to_absolute_path(relative_path: StrPath, user_id: Optional[int] = None) -> Path:
     """Convert relative path to absolute path.
 
     Handles both relative and absolute paths in input:
@@ -62,8 +63,8 @@ def to_absolute_path(relative_path: str, user_id: Optional[int] = None) -> Path:
         return path
 
     if user_id:
-        return (UPLOADS_DIR / f"user_{user_id}" / relative_path).resolve()
-    return (UPLOADS_DIR / relative_path).resolve()
+        return (UPLOADS_DIR / f"user_{user_id}" / path).resolve()
+    return (UPLOADS_DIR / path).resolve()
 
 
 def find_file_by_path(
