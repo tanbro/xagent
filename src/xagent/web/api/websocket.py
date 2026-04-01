@@ -31,7 +31,7 @@ from ..models.user import User
 from ..tools.config import WebToolConfig
 from ..user_isolated_memory import UserContext
 from ..utils.db_timezone import safe_timestamp_to_unix
-from ..utils.file import to_relative_path
+from ..utils.file import find_file_by_path, to_relative_path
 
 logger = logging.getLogger(__name__)
 
@@ -403,31 +403,7 @@ def _normalize_file_outputs(
         )
 
         # Handle both absolute and relative paths in storage_path
-        file_record = None
-        if resolved_path.is_absolute():
-            # Try exact match (old data) then relative path (new data)
-            file_record = (
-                db.query(UploadedFile)
-                .filter(UploadedFile.storage_path == str(resolved_path))
-                .first()
-            )
-            if file_record is None:
-                try:
-                    relative = to_relative_path(resolved_path, task_user_id)
-                    file_record = (
-                        db.query(UploadedFile)
-                        .filter(UploadedFile.storage_path == relative)
-                        .first()
-                    )
-                except ValueError:
-                    pass
-        else:
-            # Relative path
-            file_record = (
-                db.query(UploadedFile)
-                .filter(UploadedFile.storage_path == str(resolved_path))
-                .first()
-            )
+        file_record = find_file_by_path(db, resolved_path, task_user_id)
 
         if file_record is None and item_file_id:
             file_record = (
@@ -886,34 +862,12 @@ async def redirect_legacy_preview(
     resolved_path, relative_path = resolved_info
 
     # Handle both absolute and relative paths in storage_path
+    # First try to infer owner from path, then find file record
+    owner_info = _infer_owner_from_relative_path(db, relative_path)
     file_record = None
-    if resolved_path.is_absolute():
-        # Try exact match (old data) then relative path (new data)
-        file_record = (
-            db.query(UploadedFile)
-            .filter(UploadedFile.storage_path == str(resolved_path))
-            .first()
-        )
-        if file_record is None:
-            try:
-                owner_info = _infer_owner_from_relative_path(db, relative_path)
-                if owner_info:
-                    owner_user_id, _task_id = owner_info
-                    rel_path = to_relative_path(resolved_path, owner_user_id)
-                    file_record = (
-                        db.query(UploadedFile)
-                        .filter(UploadedFile.storage_path == rel_path)
-                        .first()
-                    )
-            except ValueError:
-                pass
-    else:
-        # Relative path
-        file_record = (
-            db.query(UploadedFile)
-            .filter(UploadedFile.storage_path == str(resolved_path))
-            .first()
-        )
+    if owner_info:
+        owner_user_id, _ = owner_info
+        file_record = find_file_by_path(db, resolved_path, owner_user_id)
 
     if file_record is None:
         owner_info = _infer_owner_from_relative_path(db, relative_path)
