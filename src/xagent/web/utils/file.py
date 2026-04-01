@@ -5,6 +5,8 @@ The table stores relative paths for portability, with backward compatibility
 for existing absolute path records.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
