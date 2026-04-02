@@ -695,10 +695,6 @@ Build when you need.`
       title: "File Management",
       description: "Manage project files: upload, preview, download, and delete.",
     },
-    tabs: {
-      input: "Input",
-      output: "Output",
-    },
     search: {
       placeholder: "Search files...",
     },

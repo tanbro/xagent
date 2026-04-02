@@ -739,12 +739,13 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
       // Process files if any
       let processedFiles: any[] = []
       if (files.length > 0) {
-        processedFiles = await Promise.all(files.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          content: await fileToBase64(file),
-          size: file.size
-        })))
+        // Files are already uploaded by ChatInput component
+        processedFiles = files.map(f => ({
+          file_id: (f as any).file_id,
+          name: f.name,
+          size: f.size,
+          type: f.type || ''
+        }))
       }
 
       // Ensure message is not empty for backend
