@@ -11,6 +11,7 @@ from typing import Generator, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
+# Alias to avoid naming conflict with this module's get_storage_root()
 from ...config import (
     get_database_url,
     get_default_sqlite_db_path,

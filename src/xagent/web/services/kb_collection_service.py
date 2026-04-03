@@ -235,7 +235,7 @@ def rename_collection_storage(
                     Path(new_path).resolve().relative_to(uploads_resolved)
                 except ValueError:
                     logger.warning(
-                        "Skipping storage_path update (path outside get_uploads_dir()): %s",
+                        "Skipping storage_path update (path outside uploads directory): %s",
                         new_path,
                     )
                     continue

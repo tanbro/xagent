@@ -5,6 +5,14 @@ by both core and web modules without creating circular dependencies.
 
 All paths support environment variable overrides for portable deployments.
 
+Environment Variable Naming Convention:
+    Most config variables use the XAGENT_* prefix for consistency.
+    Exceptions (without XAGENT_ prefix) are kept for backward compatibility:
+    - SANDBOX_*: Sandbox container configuration (predates this module)
+    - BOXLITE_HOME_DIR: Boxlite sandbox home directory
+    - DATABASE_URL: Standard database connection URL
+    - LANCEDB_PATH: LanceDB database path
+
 Future enhancement: Consider migrating to pydantic-settings for more robust
 configuration management with validation, type safety, and better structure.
 """
@@ -19,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Environment variable names
 UPLOADS_DIR = "XAGENT_UPLOADS_DIR"
-WEB_STATIC_DIR = "XAGENT_WEB_STATIC_DIR"
 WEB_DIR = "XAGENT_WEB_DIR"
 EXTERNAL_UPLOAD_DIRS = "XAGENT_EXTERNAL_UPLOAD_DIRS"
 EXTERNAL_SKILLS_LIBRARY_DIRS = "XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS"
@@ -73,31 +80,6 @@ def get_uploads_dir() -> Path:
     return web_dir / "uploads"
 
 
-def get_web_static_dir() -> Path:
-    """Get the web static files directory path.
-
-    Priority:
-    1. XAGENT_WEB_STATIC_DIR environment variable
-    2. Default to WEB_DIR/static
-
-    Returns:
-        Path object for web static directory
-    """
-    env_dir = os.getenv(WEB_STATIC_DIR)
-    if env_dir:
-        return Path(env_dir)
-
-    # Default: web/static
-    web_dir = get_web_dir()
-    return web_dir / "static"
-
-
-# Convenience aliases for backward compatibility
-def get_default_uploads_dir() -> Path:
-    """Alias for get_uploads_dir() for backward compatibility."""
-    return get_uploads_dir()
-
-
 def get_external_upload_dirs() -> list[Path]:
     """Get external upload directories from environment variable.
 
@@ -120,8 +102,13 @@ def get_external_upload_dirs() -> list[Path]:
         dir_path = dir_path.strip()
         if dir_path:
             path = Path(dir_path)
-            if path.exists():
+            if path.is_dir():
                 result.append(path)
+            else:
+                logger.warning(
+                    "External upload directory does not exist or is not a directory: %r",
+                    path,
+                )
 
     return result
 
@@ -134,6 +121,10 @@ def get_external_skills_dirs() -> list[Path]:
     variable expansion in paths.
 
     Example: ~/my-skills,/opt/skills,$PROJECT_DIR/skills
+
+    Note: Unlike get_external_upload_dirs(), this includes all configured paths
+    even if they don't exist yet. This allows users to configure skills directories
+    before creating them.
 
     Returns:
         List of Path objects for external skills directories

@@ -17,11 +17,9 @@ from xagent.config import (
     STORAGE_ROOT,
     UPLOADS_DIR,
     WEB_DIR,
-    WEB_STATIC_DIR,
     get_boxlite_home_dir,
     get_database_url,
     get_default_sqlite_db_path,
-    get_default_uploads_dir,
     get_external_skills_dirs,
     get_external_upload_dirs,
     get_lancedb_path,
@@ -33,7 +31,6 @@ from xagent.config import (
     get_storage_root,
     get_uploads_dir,
     get_web_dir,
-    get_web_static_dir,
 )
 
 
@@ -42,9 +39,6 @@ class TestEnvironmentVariableConstants:
 
     def test_upload_dir_constant(self):
         assert UPLOADS_DIR == "XAGENT_UPLOADS_DIR"
-
-    def test_web_static_dir_constant(self):
-        assert WEB_STATIC_DIR == "XAGENT_WEB_STATIC_DIR"
 
     def test_web_dir_constant(self):
         assert WEB_DIR == "XAGENT_WEB_DIR"
@@ -108,35 +102,6 @@ class TestGetWebDir:
         monkeypatch.setenv(WEB_DIR, "/custom/web")
         result = get_web_dir()
         assert result == Path("/custom/web")
-
-
-class TestGetWebStaticDir:
-    """Test get_web_static_dir() function."""
-
-    def test_default_static_dir(self, monkeypatch):
-        """Test default static directory path."""
-        monkeypatch.delenv(WEB_STATIC_DIR, raising=False)
-        monkeypatch.delenv(WEB_DIR, raising=False)
-        result = get_web_static_dir()
-        assert result.name == "static"
-
-    def test_static_dir_with_env_var(self, monkeypatch):
-        """Test static directory with environment variable."""
-        monkeypatch.setenv(WEB_STATIC_DIR, "/custom/static")
-        result = get_web_static_dir()
-        assert result == Path("/custom/static")
-
-
-class TestGetDefaultUploadsDir:
-    """Test get_default_uploads_dir() alias function."""
-
-    def test_alias_returns_same_as_get_uploads_dir(self, monkeypatch):
-        """Test that alias function returns same result as get_uploads_dir()."""
-        monkeypatch.delenv(UPLOADS_DIR, raising=False)
-        monkeypatch.delenv(WEB_DIR, raising=False)
-        result1 = get_default_uploads_dir()
-        result2 = get_uploads_dir()
-        assert result1 == result2
 
 
 class TestGetExternalUploadDirs:
