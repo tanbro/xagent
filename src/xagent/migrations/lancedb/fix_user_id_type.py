@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from xagent.config import get_lancedb_path as get_config_lancedb_path
+from ...config import get_lancedb_path as get_config_lancedb_path
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))

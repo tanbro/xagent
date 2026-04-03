@@ -341,8 +341,6 @@ class AgentTool(AbstractBaseTool):
         self._user_id = user_id
         self._task_id = task_id or f"agent_tool_{agent_id}"
         if workspace_base_dir is None:
-            from .....config import get_uploads_dir
-
             workspace_base_dir = str(get_uploads_dir())
         self._workspace_base_dir = workspace_base_dir
         self._visibility = ToolVisibility.PUBLIC
