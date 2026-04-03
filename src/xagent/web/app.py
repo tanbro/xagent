@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..config import get_uploads_dir
 from .api.admin_users import router as admin_users_router
 from .api.agents import router as agents_router
 from .api.auth import auth_router
@@ -28,7 +29,6 @@ from .api.templates import router as templates_router
 from .api.text2sql import text2sql_router
 from .api.tools import tools_router
 from .api.websocket import ws_router
-from .config import UPLOADS_DIR
 from .dynamic_memory_store import get_memory_store
 from .logging_config import setup_logging
 from .models.database import init_db
@@ -38,8 +38,14 @@ setup_logging()  # Uses XAGENT_LOG_LEVEL env var or defaults to INFO
 
 logger = logging.getLogger(__name__)
 
-# 导出全局 memory store 供其他模块使用
+
 __all__ = ["app"]
+
+
+# Ensure web, uploads directory exists before configuring static files
+uploads_dir = get_uploads_dir()
+uploads_dir.mkdir(parents=True, exist_ok=True)
+
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -129,7 +135,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 # 配置静态文件
 app.mount(
     "/uploads",
-    StaticFiles(directory=str(UPLOADS_DIR)),
+    StaticFiles(directory=str(uploads_dir)),
     name="uploads",
 )
 
