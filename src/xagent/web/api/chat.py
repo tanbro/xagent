@@ -971,10 +971,11 @@ class AgentServiceManager:
                 )
 
         # Add configured external upload directories (for knowledge base files from other projects)
-        allowed_external_dirs.extend([str(d) for d in get_external_upload_dirs()])
-        if get_external_upload_dirs():
+        external_upload_dirs = get_external_upload_dirs()
+        allowed_external_dirs.extend([str(d) for d in external_upload_dirs])
+        if external_upload_dirs:
             logger.info(
-                f"Added {len(get_external_upload_dirs())} external upload directories from config"
+                f"Added {len(external_upload_dirs)} external upload directories from config"
             )
 
         for workspace_id, base_dir in workspace_ids:

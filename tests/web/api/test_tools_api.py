@@ -6,7 +6,6 @@ which lists all tools that can be used by agents.
 """
 
 import tempfile
-from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -60,8 +59,7 @@ def test_db():
     temp_db_path = os.path.join(temp_dir, "test.db")
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{temp_db_path}"
 
-    with patch("xagent.web.models.database.try_upgrade_db"):
-        init_db(db_url=SQLALCHEMY_DATABASE_URL)
+    init_db(db_url=SQLALCHEMY_DATABASE_URL)
 
     engine = get_engine()
 
