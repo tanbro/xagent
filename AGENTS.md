@@ -58,13 +58,13 @@ Xagent has one main entrypoint:
 
 ### Configuration System
 
-**IMPORTANT**: All path-related and configuration settings MUST use the unified configuration module at `src/xagent/core/config.py`.
+**IMPORTANT**: All path-related and configuration settings SHALL try their best to use the unified configuration module at `src/xagent/config.py`.
 
 **Core Principles:**
-1. **Single source of truth** - All configuration goes through `core/config.py`
+1. **Single source of truth** - All configuration goes through `config.py`
 2. **No hardcoded paths** - Never use string literals like `"uploads"` or `"./data"`
 3. **Environment variable support** - All paths must be configurable via `XAGENT_*` env vars
-4. **No circular dependencies** - `core/config.py` has no dependencies on other core submodules
+4. **No circular dependencies** - `config.py` has no dependencies on other core submodules
 
 **Import Style:**
 - **Source code** (`src/xagent/`): Use relative imports
@@ -97,7 +97,7 @@ def get_<config_name>() -> ReturnType:
 ```
 
 **Adding New Configuration:**
-1. Add function to `src/xagent/core/config.py`
+1. Add function to `src/xagent/config.py`
 2. Add env var constant: `<ENV_VAR> = "XAGENT_<NAME>"`
 3. Follow env var → default priority pattern
 4. Update `example.env` with documentation

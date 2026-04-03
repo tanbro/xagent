@@ -94,8 +94,9 @@ def _build_unique_file_path(path: Path) -> Path:
 
 def _ensure_under_uploads(path: Path, user_id: int) -> None:
     resolved_path = path.resolve()
-    uploads_root = get_uploads_dir().resolve()
-    user_root = (get_uploads_dir() / f"user_{user_id}").resolve()
+    uploads_dir = get_uploads_dir()
+    uploads_root = uploads_dir.resolve()
+    user_root = (uploads_dir / f"user_{user_id}").resolve()
     try:
         resolved_path.relative_to(uploads_root)
         resolved_path.relative_to(user_root)

@@ -47,7 +47,7 @@ uploads_dir = get_uploads_dir()
 uploads_dir.mkdir(parents=True, exist_ok=True)
 
 
-# 创建 FastAPI 应用
+# FastAPI app creation here
 app = FastAPI(
     title="xagent", description="The Agent Operating System", redirect_slashes=False
 )
@@ -62,7 +62,7 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# 添加全局异常处理器
+# Add global exception handler
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
@@ -111,38 +111,37 @@ async def validation_exception_handler(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> None:
-    """全局异常处理器，确保所有错误都被记录"""
+    """Global exception handler, ensuring all errors are recorded"""
     import traceback
 
     logger.error(f"Unhandled exception in {request.url}: {str(exc)}")
     logger.error(f"Traceback: {traceback.format_exc()}")
-    # 重新抛出异常，让FastAPI默认处理
+    # Re-raise the exception, let FastAPI handle it
     raise exc
 
 
-# 添加CORS中间件
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应该限制具体域名
+    allow_origins=["*"],  # TODO: "*" should not be used in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 获取当前目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# 配置静态文件
+# For static files
 app.mount(
     "/uploads",
     StaticFiles(directory=str(uploads_dir)),
     name="uploads",
 )
 
-# 创建 memory management router with dynamic memory store
+# memory management router with dynamic memory store
 memory_router = MemoryManagementRouter(get_memory_store).get_router()
 
-# 注册API路由
+# API routers
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(cloud_router)
@@ -164,7 +163,7 @@ app.include_router(agents_router)
 app.include_router(channel_router, prefix="/api/channels", tags=["Channels"])
 
 
-# 初始化数据库
+# initial database and skill manager
 @app.on_event("startup")
 async def startup_event() -> None:
     global _migration_task

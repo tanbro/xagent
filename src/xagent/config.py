@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +98,7 @@ def get_default_uploads_dir() -> Path:
     return get_uploads_dir()
 
 
-def get_external_upload_dirs() -> List[Path]:
+def get_external_upload_dirs() -> list[Path]:
     """Get external upload directories from environment variable.
 
     The XAGENT_EXTERNAL_UPLOAD_DIRS environment variable should contain
@@ -127,7 +126,7 @@ def get_external_upload_dirs() -> List[Path]:
     return result
 
 
-def get_external_skills_dirs() -> List[Path]:
+def get_external_skills_dirs() -> list[Path]:
     """Get external skills library directories from environment variable.
 
     The XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS environment variable should contain
@@ -217,14 +216,16 @@ def get_lancedb_path() -> Path:
     return Path("data/lancedb")
 
 
-def get_default_sqlite_db_path() -> Path:
-    """Get the default SQLite database file path.
+def get_default_sqlite_db_path() -> str:
+    """Get the default SQLite database file path string.
 
     Returns:
-        Path object for SQLite database file in storage root
+        Path string for SQLite database file in storage root
     """
+    # The original implementation in manager.py returned str
+    # So we need to convert it to str here
     storage_root = get_storage_root()
-    return storage_root / "xagent.db"
+    return str(storage_root / "xagent.db")
 
 
 def get_database_url() -> str:
@@ -246,7 +247,7 @@ def get_database_url() -> str:
     return f"sqlite:///{db_path}"
 
 
-def get_sandbox_cpus() -> Optional[int]:
+def get_sandbox_cpus() -> int | None:
     """Get the CPU count for sandbox containers.
 
     Returns:
@@ -261,7 +262,7 @@ def get_sandbox_cpus() -> Optional[int]:
     return None
 
 
-def get_sandbox_memory() -> Optional[int]:
+def get_sandbox_memory() -> int | None:
     """Get the memory limit for sandbox containers (in MB).
 
     Returns:
@@ -352,7 +353,7 @@ def get_sandbox_volumes() -> list[tuple[str, str, str]]:
     return volumes
 
 
-def get_boxlite_home_dir() -> Optional[Path]:
+def get_boxlite_home_dir() -> Path | None:
     """Get the BoxLite home directory path.
 
     Returns:
