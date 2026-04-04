@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping, Optional, Type
 
 from pydantic import BaseModel, Field
 
+from .....config import get_uploads_dir
 from ....workspace import TaskWorkspace
 from ...core.image_web_search import ImageWebSearchCore
 from .base import AbstractBaseTool, ToolCategory, ToolVisibility
@@ -130,7 +131,7 @@ class ImageWebSearchTool(AbstractBaseTool):
             return str(self._workspace.temp_dir)
         else:
             # Fallback to default uploads/temp directory
-            return str(Path("uploads") / "temp")
+            return str(get_uploads_dir() / "temp")
 
 
 def get_image_web_search_tool(
