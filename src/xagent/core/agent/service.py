@@ -966,10 +966,14 @@ class AgentService:
             # Create basic tool config without database dependency
             class DefaultToolConfig(ToolConfig):
                 def __init__(self, workspace_config: Optional[Dict[str, Any]] = None):
-                    self._workspace_config = workspace_config
+                    # Build config dict for parent class initialization
+                    config_dict: Dict[str, Any] = {"workspace": workspace_config}
+                    if workspace_config:
+                        config_dict["task_id"] = workspace_config.get("task_id")
+                    super().__init__(config_dict)
 
                 def get_workspace_config(self) -> Optional[Dict[str, Any]]:
-                    return self._workspace_config
+                    return self.workspace_config
 
                 def get_file_tools_enabled(self) -> bool:
                     return True
@@ -993,8 +997,8 @@ class AgentService:
                     return True
 
                 def get_task_id(self) -> Optional[str]:
-                    if self._workspace_config:
-                        return self._workspace_config.get("task_id")
+                    if self.workspace_config:
+                        return self.workspace_config.get("task_id")
                     return None
 
                 def get_user_id(self) -> Optional[int]:
