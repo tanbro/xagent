@@ -116,21 +116,35 @@ class OutputFilteredToolWrapper(AbstractBaseTool):
     @property
     def func(self) -> Any:
         """Get the underlying function, wrapped with output filtering."""
-        if (func_obj := getattr(self._target, "func", None)) is None:
-            raise AttributeError(f"Tool '{self._target.name}' has no 'func' attribute")
+        if not hasattr(self, "_wrapped_func"):
+            func_obj = getattr(self._target, "func", None)
+            if func_obj is None:
+                raise AttributeError(
+                    f"Tool '{self._target.name}' has no 'func' attribute"
+                )
 
-        # Return a wrapped function that applies output filtering
-        original_func = func_obj
+            # Create wrapper based on function type
+            if inspect.iscoroutinefunction(func_obj):
+                self._wrapped_func = self._make_async_wrapper(func_obj)
+            else:
+                self._wrapped_func = self._make_sync_wrapper(func_obj)
+
+        return self._wrapped_func
+
+    def _make_sync_wrapper(self, original_func: Any) -> Any:
+        """Create a sync wrapper that applies output filtering."""
 
         def wrapped_func(*args: Any, **kwargs: Any) -> Any:
             result = original_func(*args, **kwargs)
             return self._filter.filter(result, self._target.name)
 
+        return wrapped_func
+
+    def _make_async_wrapper(self, original_func: Any) -> Any:
+        """Create an async wrapper that applies output filtering."""
+
         async def wrapped_func_async(*args: Any, **kwargs: Any) -> Any:
             result = await original_func(*args, **kwargs)
             return self._filter.filter(result, self._target.name)
 
-        # Return async wrapper if original function is async
-        if inspect.iscoroutinefunction(original_func):
-            return wrapped_func_async
-        return wrapped_func
+        return wrapped_func_async
