@@ -194,8 +194,50 @@ class ToolFactory:
                 await create_workspace_in_sandbox(sandbox, workspace)
             tools = await ToolFactory._wrap_sandbox_tools(tools, sandbox)
 
+        # Apply output filtering to all tools
+        tools = ToolFactory._apply_output_filters(tools, config)
+
         logger.info(f"Created {len(tools)} tools from configuration")
         return tools
+
+    @staticmethod
+    def _apply_output_filters(tools: List[Tool], config: BaseToolConfig) -> List[Tool]:
+        """Apply output filtering to all tools.
+
+        Args:
+            tools: Original tool list
+            config: Tool configuration
+
+        Returns:
+            Tool list with output filtering applied
+        """
+        from .base import AbstractBaseTool
+        from .output_filter_wrapper import OutputFilteredToolWrapper
+
+        max_chars = config.get_max_output_length()
+        truncation_message = config.get_truncation_message()
+
+        filtered_tools: List[Tool] = []
+        for tool in tools:
+            # Only wrap AbstractBaseTool instances
+            if isinstance(tool, AbstractBaseTool):
+                wrapper = OutputFilteredToolWrapper(
+                    target_tool=tool,
+                    max_chars=max_chars,
+                    truncation_message=truncation_message,
+                )
+                filtered_tools.append(wrapper)
+            else:
+                # For non-AbstractBaseTool tools, keep as is
+                filtered_tools.append(tool)
+
+        if filtered_tools:
+            logger.debug(
+                f"Applied output filtering to {len(filtered_tools)} tools "
+                f"(max_chars={max_chars})"
+            )
+
+        return filtered_tools
 
     @staticmethod
     async def _wrap_sandbox_tools(tools: List[Tool], sandbox: Any) -> List[Tool]:

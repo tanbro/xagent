@@ -129,6 +129,22 @@ class BaseToolConfig(ABC):
         """Get default LLM for general tasks."""
         pass
 
+    @abstractmethod
+    def get_max_output_length(self) -> int:
+        """Get default maximum output length in characters.
+
+        Default: 50K characters (~12K tokens, suitable for most LLMs)
+        """
+        pass
+
+    @abstractmethod
+    def get_truncation_message(self) -> str:
+        """Get message to append when output is truncated.
+
+        Default: "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
+        """
+        pass
+
 
 class ToolConfig(BaseToolConfig):
     """Tool configuration that uses provided config dict for standalone usage."""
@@ -152,6 +168,17 @@ class ToolConfig(BaseToolConfig):
         user_id = config_dict.get("user_id")
         is_admin = config_dict.get("is_admin", False)
         tool_credentials = config_dict.get("tool_credentials", {})
+
+        # Output limit configuration (uses environment variable as default)
+        # Import here to avoid circular dependency (config <-> output_filter)
+        from .output_filter import _get_default_max_output_length
+
+        max_output_length = config_dict.get(
+            "max_output_length", _get_default_max_output_length()
+        )
+        truncation_message = config_dict.get(
+            "truncation_message", "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
+        )
 
         self.workspace_config: Optional[Dict[str, Any]] = workspace_config
         self.vision_model: Optional[Any] = (
@@ -178,6 +205,8 @@ class ToolConfig(BaseToolConfig):
         self.user_id: Optional[int] = user_id
         self.is_admin_value: bool = bool(is_admin)
         self.tool_credentials: Dict[str, Dict[str, str]] = tool_credentials
+        self.max_output_length: int = max_output_length
+        self.truncation_message: str = truncation_message
 
     def get_workspace_config(self) -> Optional[Dict[str, Any]]:
         return self.workspace_config
@@ -257,3 +286,9 @@ class ToolConfig(BaseToolConfig):
 
     def get_sql_connections(self) -> Dict[str, str]:
         return {}
+
+    def get_max_output_length(self) -> int:
+        return self.max_output_length
+
+    def get_truncation_message(self) -> str:
+        return self.truncation_message
