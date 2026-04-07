@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session
 
 from .....config import get_uploads_dir
 from .....core.workspace import TaskWorkspace
-from .base import Tool
+from .base import AbstractBaseTool, Tool
 from .config import BaseToolConfig
+from .output_filter_wrapper import OutputFilteredToolWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -211,11 +212,9 @@ class ToolFactory:
         Returns:
             Tool list with output filtering applied
         """
-        from .base import AbstractBaseTool
-        from .output_filter_wrapper import OutputFilteredToolWrapper
-
         max_chars = config.get_max_output_length()
-        truncation_message = config.get_truncation_message()
+        max_fields = config.get_max_field_count()
+        max_recursion = config.get_max_recursion_depth()
 
         filtered_tools: List[Tool] = []
         for tool in tools:
@@ -224,7 +223,8 @@ class ToolFactory:
                 wrapper = OutputFilteredToolWrapper(
                     target_tool=tool,
                     max_chars=max_chars,
-                    truncation_message=truncation_message,
+                    max_fields=max_fields,
+                    max_recursion=max_recursion,
                 )
                 filtered_tools.append(wrapper)
             else:
@@ -234,7 +234,7 @@ class ToolFactory:
         if filtered_tools:
             logger.debug(
                 f"Applied output filtering to {len(filtered_tools)} tools "
-                f"(max_chars={max_chars})"
+                f"(max_chars={max_chars}, max_fields={max_fields}, max_recursion={max_recursion})"
             )
 
         return filtered_tools

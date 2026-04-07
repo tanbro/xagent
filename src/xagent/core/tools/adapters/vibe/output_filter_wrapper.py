@@ -11,10 +11,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Type
 from pydantic import BaseModel
 
 from .base import AbstractBaseTool
-from .output_filter import (
-    DEFAULT_TRUNCATION_MESSAGE,
-    OutputValueFilter,
-)
+from .output_filter import OutputValueFilter
 
 if TYPE_CHECKING:
     from .base import ToolCategory
@@ -33,24 +30,23 @@ class OutputFilteredToolWrapper(AbstractBaseTool):
     def __init__(
         self,
         target_tool: AbstractBaseTool,
-        max_chars: int | None = None,
-        truncation_message: str = DEFAULT_TRUNCATION_MESSAGE,
+        max_chars: int,
+        max_fields: int,
+        max_recursion: int,
     ):
         """
         Initialize output filter wrapper.
 
         Args:
             target_tool: Tool to wrap
-            max_chars: Maximum output length in characters. If None, reads from
-                      XAGENT_TOOL_MAX_OUTPUT_LENGTH env var or uses default.
-            truncation_message: Message to append when truncated
+            max_chars: Maximum output length in characters.
+            max_fields: Maximum number of fields/items in dict/list.
+            max_recursion: Maximum recursion depth.
         """
         self._target = target_tool
-        self._visibility = getattr(target_tool, "_visibility", None)
-        self._allow_users = getattr(target_tool, "_allow_users", None)
 
         # Create output filter
-        self._filter = OutputValueFilter(max_chars, truncation_message)
+        self._filter = OutputValueFilter(max_chars, max_fields, max_recursion)
 
     @property
     def name(self) -> str:

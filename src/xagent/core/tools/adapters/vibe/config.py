@@ -9,6 +9,8 @@ to the ToolFactory in a unified way.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from ..... import config as _root_config
+
 
 class BaseToolConfig(ABC):
     """Abstract base class for tool configuration."""
@@ -115,6 +117,11 @@ class BaseToolConfig(ABC):
         return {}
 
     @abstractmethod
+    def get_db(self) -> Optional[Any]:
+        """Get database session. Returns None for standalone usage."""
+        pass
+
+    @abstractmethod
     def get_asr_model(self) -> Optional[Any]:
         """Get default ASR (speech-to-text) model."""
         pass
@@ -129,21 +136,29 @@ class BaseToolConfig(ABC):
         """Get default LLM for general tasks."""
         pass
 
-    @abstractmethod
     def get_max_output_length(self) -> int:
-        """Get default maximum output length in characters.
+        """Get maximum output length in characters.
 
-        Default: 50K characters (~12K tokens, suitable for most LLMs)
+        Reads from XAGENT_TOOL_MAX_OUTPUT_LENGTH env var if set.
+        See :mod:`xagent.config` for details.
         """
-        pass
+        return _root_config.get_tool_max_output_length()
 
-    @abstractmethod
-    def get_truncation_message(self) -> str:
-        """Get message to append when output is truncated.
+    def get_max_field_count(self) -> int:
+        """Get maximum number of fields/items in dict/list for output filtering.
 
-        Default: "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
+        Reads from XAGENT_TOOL_MAX_FIELD_COUNT env var if set.
+        See :mod:`xagent.config` for details.
         """
-        pass
+        return _root_config.get_tool_max_field_count()
+
+    def get_max_recursion_depth(self) -> int:
+        """Get maximum recursion depth for output filtering.
+
+        Reads from XAGENT_TOOL_MAX_RECURSION_DEPTH env var if set.
+        See :mod:`xagent.config` for details.
+        """
+        return _root_config.get_tool_max_recursion_depth()
 
 
 class ToolConfig(BaseToolConfig):
@@ -170,15 +185,28 @@ class ToolConfig(BaseToolConfig):
         tool_credentials = config_dict.get("tool_credentials", {})
 
         # Output limit configuration (uses environment variable as default)
-        # Import here to avoid circular dependency (config <-> output_filter)
-        from .output_filter import _get_default_max_output_length
-
-        max_output_length = config_dict.get(
-            "max_output_length", _get_default_max_output_length()
-        )
-        truncation_message = config_dict.get(
-            "truncation_message", "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
-        )
+        # Store custom values if provided, otherwise use None to fall back to base class defaults
+        self._custom_max_output_length: int | None = None
+        try:
+            self._custom_max_output_length = int(
+                config_dict.get("max_output_length")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
+        self._custom_max_field_count: int | None = None
+        try:
+            self._custom_max_field_count = int(
+                config_dict.get("max_field_count")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
+        self._custom_max_recursion_depth: int | None = None
+        try:
+            self._custom_max_recursion_depth = int(
+                config_dict.get("max_recursion_depth")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
 
         self.workspace_config: Optional[Dict[str, Any]] = workspace_config
         self.vision_model: Optional[Any] = (
@@ -205,8 +233,6 @@ class ToolConfig(BaseToolConfig):
         self.user_id: Optional[int] = user_id
         self.is_admin_value: bool = bool(is_admin)
         self.tool_credentials: Dict[str, Dict[str, str]] = tool_credentials
-        self.max_output_length: int = max_output_length
-        self.truncation_message: str = truncation_message
 
     def get_workspace_config(self) -> Optional[Dict[str, Any]]:
         return self.workspace_config
@@ -288,7 +314,20 @@ class ToolConfig(BaseToolConfig):
         return {}
 
     def get_max_output_length(self) -> int:
-        return self.max_output_length
+        if self._custom_max_output_length is not None:
+            return self._custom_max_output_length
+        return super().get_max_output_length()
 
-    def get_truncation_message(self) -> str:
-        return self.truncation_message
+    def get_max_field_count(self) -> int:
+        if self._custom_max_field_count is not None:
+            return self._custom_max_field_count
+        return super().get_max_field_count()
+
+    def get_max_recursion_depth(self) -> int:
+        if self._custom_max_recursion_depth is not None:
+            return self._custom_max_recursion_depth
+        return super().get_max_recursion_depth()
+
+    def get_db(self) -> Optional[Any]:
+        """ToolConfig (standalone) does not have database access."""
+        return None

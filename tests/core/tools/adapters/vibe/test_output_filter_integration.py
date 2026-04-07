@@ -6,6 +6,7 @@ import pytest
 
 from xagent.core.tools.adapters.vibe.config import ToolConfig
 from xagent.core.tools.adapters.vibe.factory import ToolFactory
+from xagent.core.tools.adapters.vibe.output_filter import DEFAULT_TRUNCATION_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -15,7 +16,6 @@ async def test_tool_factory_applies_filters():
         {
             "workspace": None,
             "max_output_length": 100,
-            "truncation_message": " [TRUNCATED]",
         }
     )
 
@@ -32,28 +32,87 @@ async def test_tool_factory_applies_filters():
     tool = wrapped_tools[0]
     assert hasattr(tool, "_filter")
     assert tool._filter.max_chars == 100
-    assert tool._filter.truncation_message == " [TRUNCATED]"
 
 
 @pytest.mark.asyncio
 async def test_filtered_tool_execution():
-    """Test that filtered tools truncate output correctly."""
-    config = ToolConfig(
-        {
-            "workspace": None,
-            "max_output_length": 50,
-            "truncation_message": " [TRUNCATED]",
-        }
+    """Test that filtered tools truncate output correctly when executed."""
+    from langchain_core.tools.structured import StructuredTool
+    from pydantic import BaseModel, Field
+
+    from xagent.core.tools.adapters.vibe.base import AbstractBaseTool, ToolMetadata
+    from xagent.core.tools.adapters.vibe.output_filter_wrapper import (
+        OutputFilteredToolWrapper,
     )
 
-    tools = await ToolFactory.create_all_tools(config)
+    # Create a simple test tool that returns predictable long output
+    class TestInput(BaseModel):
+        text: str = Field(description="Text to repeat")
 
-    # Find a tool with run_json_sync method
-    executable_tool = next((t for t in tools if hasattr(t, "run_json_sync")), None)
-    assert executable_tool is not None, "No executable tool found"
+    def test_long_output_func(text: str) -> str:
+        """Return the input text repeated 100 times for testing output filtering."""
+        return text * 100
 
-    # Verify the tool has the filter
-    assert hasattr(executable_tool, "_filter")
+    # Create a StructuredTool
+    langchain_tool = StructuredTool.from_function(
+        func=test_long_output_func,
+        name="test_long_output",
+        description="Test tool that returns long output",
+        args_schema=TestInput,
+    )
+
+    # Create AbstractBaseTool wrapper
+    class TestTool(AbstractBaseTool):
+        @property
+        def name(self) -> str:
+            return "test_long_output"
+
+        @property
+        def description(self) -> str:
+            return "Test tool that returns long output"
+
+        @property
+        def metadata(self) -> ToolMetadata:
+            return ToolMetadata(
+                name="test_long_output",
+                description="Test tool that returns long output",
+                category="BASIC",
+            )
+
+        def args_type(self):
+            return TestInput
+
+        def return_type(self):
+            return str
+
+        def state_type(self):
+            return None
+
+        def is_async(self):
+            return False
+
+        def run_json_sync(self, args):
+            result = langchain_tool.invoke(args)
+            return result
+
+        async def run_json_async(self, args):
+            return self.run_json_sync(args)
+
+    # Wrap it with the same wrapper used by ToolFactory
+    wrapped = OutputFilteredToolWrapper(
+        target_tool=TestTool(),
+        max_chars=50,
+        max_fields=1000,
+        max_recursion=20,
+    )
+
+    # Execute the tool and verify truncation
+    result = wrapped.run_json_sync({"text": "abcdefghij" * 10})  # 100 chars
+
+    # Result should be truncated to 50 chars + message
+    assert len(result) <= 50 + len(DEFAULT_TRUNCATION_MESSAGE)
+    assert result.endswith(DEFAULT_TRUNCATION_MESSAGE)
+    assert result.startswith("abcdefghij")
 
 
 @pytest.mark.asyncio
@@ -73,21 +132,20 @@ async def test_default_max_output_length():
 
 
 @pytest.mark.asyncio
-async def test_custom_truncation_message():
-    """Test custom truncation message."""
-    custom_message = " ... [OUTPUT WAS TOO LONG]"
+async def test_hardcoded_truncation_message():
+    """Test that truncation message uses the hardcoded default from output_filter.py."""
     config = ToolConfig(
         {
             "workspace": None,
             "max_output_length": 10,
-            "truncation_message": custom_message,
         }
     )
 
     tools = await ToolFactory.create_all_tools(config)
 
-    # Find a tool and check its truncation message
+    # Find a tool and verify truncation message is used
     for tool in tools:
         if hasattr(tool, "_filter"):
-            assert tool._filter.truncation_message == custom_message
+            # The filter uses the hardcoded message from output_filter.py
+            assert tool._filter.max_chars == 10
             break

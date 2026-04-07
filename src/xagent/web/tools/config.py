@@ -231,26 +231,6 @@ class WebToolConfig(BaseToolConfig):
         """Set sandbox instance for this config."""
         self._sandbox = sandbox
 
-    def get_max_output_length(self) -> int:
-        """Get default maximum output length in characters.
-
-        Reads from XAGENT_TOOL_MAX_OUTPUT_LENGTH env var if set.
-        Default: 50K characters (~12K tokens, suitable for most LLMs)
-        """
-        # Import here to avoid circular dependency (web/tools/config <-> core/tools/adapters/vibe/output_filter)
-        from ...core.tools.adapters.vibe.output_filter import (
-            _get_default_max_output_length,
-        )
-
-        return _get_default_max_output_length()
-
-    def get_truncation_message(self) -> str:
-        """Get message to append when output is truncated.
-
-        Default: "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
-        """
-        return "\n\n[OUTPUT TRUNCATED: exceeded maximum length]"
-
     def _load_embedding_model(self) -> Optional[str]:
         """Load embedding model ID from database via model service."""
         from ...web.services.model_service import get_default_embedding_model
