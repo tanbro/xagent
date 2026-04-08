@@ -2199,11 +2199,32 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
 
         reasoning = response.get("reasoning") or response.get("content") or ""
 
+        # Parse tool arguments from JSON string
+        # This may raise RecursionError if arguments contain deeply nested JSON
+        arguments_str = function_info.get("arguments", "{}")
+        try:
+            tool_args = json.loads(arguments_str)
+        except (RecursionError, json.JSONDecodeError) as e:
+            # JSON parsing failed - convert to PatternExecutionError
+            # This will be caught by the caller and converted to observation
+            raise PatternExecutionError(
+                pattern_name="ReAct",
+                message=f"Failed to parse tool arguments JSON: {str(e)}",
+                context={
+                    "error_type": type(e).__name__,
+                    "tool_name": tool_name,
+                    "arguments_preview": _truncate_for_display(
+                        arguments_str, max_len=200
+                    ),
+                },
+                cause=e,
+            )
+
         return Action(
             type="tool_call",
             reasoning=reasoning,
             tool_name=tool_name,
-            tool_args=json.loads(function_info.get("arguments", "{}")),
+            tool_args=tool_args,
         )
 
     async def _execute_action(

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from xagent.core.agent.context import AgentContext
+from xagent.core.agent.exceptions import PatternExecutionError
 from xagent.core.agent.pattern.react import ReActPattern
 from xagent.core.memory.base import MemoryResponse, MemoryStore
 from xagent.core.model.chat.basic.base import BaseLLM
@@ -467,3 +468,82 @@ async def test_llm_can_see_json_parsing_error():
         assert repair_call_count[0] >= 1
         # Task completes successfully
         assert result.get("success") is True
+
+
+# ============================================================================
+# STRATEGY 6: Native Tool Calling - RecursionError in tool arguments
+# ============================================================================
+
+
+def test_convert_native_tool_call_recursion_error():
+    """Test that RecursionError in _convert_native_tool_call_to_action is handled.
+
+    This test verifies the fix for the review comment about native tool calling
+    compatibility. The _convert_native_tool_call_to_action method parses tool
+    arguments using json.loads, which may raise RecursionError for deeply nested JSON.
+    The fix ensures this is caught and converted to PatternExecutionError.
+
+    This is a unit test of the specific method, not an integration test.
+    """
+
+    from xagent.core.agent.pattern.react import ReActPattern
+
+    # Create a minimal ReActPattern instance (just for the method)
+    pattern = ReActPattern(llm=MockReActLLM())
+
+    # Create a tool call response with valid JSON structure
+    response = {
+        "type": "tool_call",
+        "tool_calls": [
+            {
+                "function": {
+                    "name": "calculator",
+                    "arguments": '{"expression": "2+2"}',  # Valid JSON
+                }
+            }
+        ],
+        "reasoning": "I need to calculate",
+    }
+
+    # Mock json.loads to raise RecursionError
+    with patch("json.loads") as mock_json_loads:
+        mock_json_loads.side_effect = RecursionError("maximum recursion depth exceeded")
+
+        # Should raise PatternExecutionError, not RecursionError
+        with pytest.raises(PatternExecutionError) as exc_info:
+            pattern._convert_native_tool_call_to_action(response)
+
+        # Verify the error is PatternExecutionError
+        assert exc_info.value.pattern_name == "ReAct"
+        assert "Failed to parse tool arguments JSON" in str(exc_info.value)
+        assert "RecursionError" in exc_info.value.context.get("error_type", "")
+
+
+def test_convert_native_tool_call_json_decode_error():
+    """Test that JSONDecodeError in _convert_native_tool_call_to_action is handled."""
+
+    from xagent.core.agent.pattern.react import ReActPattern
+
+    pattern = ReActPattern(llm=MockReActLLM())
+
+    response = {
+        "type": "tool_call",
+        "tool_calls": [
+            {
+                "function": {
+                    "name": "calculator",
+                    "arguments": "invalid json {{{",  # Invalid JSON
+                }
+            }
+        ],
+        "reasoning": "I need to calculate",
+    }
+
+    # Should raise PatternExecutionError, not JSONDecodeError
+    with pytest.raises(PatternExecutionError) as exc_info:
+        pattern._convert_native_tool_call_to_action(response)
+
+    # Verify the error is PatternExecutionError
+    assert exc_info.value.pattern_name == "ReAct"
+    assert "Failed to parse tool arguments JSON" in str(exc_info.value)
+    assert "JSONDecodeError" in exc_info.value.context.get("error_type", "")
