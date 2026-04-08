@@ -1835,12 +1835,30 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
                     # Re-raise PatternExecutionError as it's not a repair failure
                     if isinstance(repair_error, PatternExecutionError):
                         raise
+                    # Convert other parsing errors (RecursionError, JSONDecodeError, ValidationError)
+                    # to PatternExecutionError so they can be converted to observations for LLM to see
+                    if isinstance(
+                        repair_error,
+                        (RecursionError, json.JSONDecodeError, ValidationError),
+                    ):
+                        raise PatternExecutionError(
+                            pattern_name="ReAct",
+                            message=f"Failed to parse LLM response: {str(repair_error)}",
+                            context={
+                                "error_type": type(repair_error).__name__,
+                                "response_preview": response[:200]
+                                if response
+                                else None,
+                            },
+                            cause=repair_error,
+                        )
                     # Not valid JSON, treat as direct text response
                     pass
             except AttributeError:
                 pass
 
             # Fallback: treat unparsable string as direct text response
+            # This should only be reached for truly unparsable content, not JSON parsing errors
             action = Action(
                 type="final_answer",
                 reasoning="LLM provided direct response",
