@@ -1873,7 +1873,22 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
         # Parse JSON response (for when response_format="json_object" is enforced)
         try:
             content = self._extract_content(response)
-            repaired = repair_loads(content, logging=True)
+            try:
+                repaired = repair_loads(content, logging=True)
+            except (RecursionError, json.JSONDecodeError) as repair_error:
+                # repair_loads failed due to deeply nested or malformed JSON
+                # Convert to PatternExecutionError so it gets converted to observation
+                raise PatternExecutionError(
+                    pattern_name="ReAct",
+                    message=f"Failed to parse LLM response: {str(repair_error)}",
+                    context={
+                        "error_type": type(repair_error).__name__,
+                        "response_preview": _truncate_for_display(
+                            str(response), max_len=200
+                        ),
+                    },
+                    cause=repair_error,
+                )
 
             if isinstance(repaired, tuple):
                 action_data, repair_log = repaired

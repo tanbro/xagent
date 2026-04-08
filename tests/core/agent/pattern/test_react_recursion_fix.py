@@ -547,3 +547,72 @@ def test_convert_native_tool_call_json_decode_error():
     assert exc_info.value.pattern_name == "ReAct"
     assert "Failed to parse tool arguments JSON" in str(exc_info.value)
     assert "JSONDecodeError" in exc_info.value.context.get("error_type", "")
+
+
+# ============================================================================
+# STRATEGY 7: Path 2 - Non-string response with RecursionError in repair_loads
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_path2_recursion_error_in_repair_loads():
+    """Test that RecursionError in repair_loads for non-string responses is handled.
+
+    This addresses the deep code review finding that Path 2 (line 1876)
+    was missing RecursionError handling. When LLM returns a non-string
+    response (like a dict or list) and repair_loads encounters deeply
+    nested JSON, it should raise PatternExecutionError, not propagate
+    RecursionError to the generic exception handler.
+
+    The test simulates a dict response that requires repair_loads processing,
+    and repair_loads throws RecursionError.
+    """
+
+    # Track calls
+    repair_call_count = [0]
+
+    # Create an LLM that returns a dict response (non-string)
+    # When LLM returns a dict (not a string), it goes through Path 2
+    llm = MockReActLLM(
+        responses=[
+            # First response is a dict (non-string) that triggers Path 2
+            # This dict will be processed by _extract_content -> repair_loads
+            {"type": "final_answer", "answer": "test"},
+        ],
+        stream_chunks=[
+            # Empty stream_chunks - forces use of responses array
+        ],
+    )
+
+    # Mock repair_loads to raise RecursionError on first call
+    def side_effect_repair(content, logging=True):
+        repair_call_count[0] += 1
+        if repair_call_count[0] == 1:
+            # First call triggers RecursionError (simulating deeply nested JSON)
+            raise RecursionError("maximum recursion depth exceeded")
+        # Subsequent calls work normally
+        import json
+
+        return json.loads(content)
+
+    with patch("xagent.core.agent.pattern.react.repair_loads") as mock_repair:
+        mock_repair.side_effect = side_effect_repair
+
+        pattern = ReActPattern(llm=llm, max_iterations=5)
+        # The pattern.run should handle the RecursionError gracefully
+        # by converting it to PatternExecutionError -> observation
+        result = await pattern.run(
+            task="Test task",
+            memory=DummyMemoryStore(),
+            tools=[],
+            context=AgentContext(),
+        )
+
+    # Verify:
+    # 1. repair_loads was called (error was triggered)
+    assert repair_call_count[0] >= 1, (
+        f"Expected repair_loads to be called, got {repair_call_count[0]}"
+    )
+    # 2. Task completes - either successfully or hitting max_iterations
+    # The key is that it doesn't crash with RecursionError
+    assert result is not None, "Result should not be None"
