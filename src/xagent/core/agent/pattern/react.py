@@ -1864,73 +1864,73 @@ Remember: Return ONLY ONE JSON object. No additional text, no multiple objects.
 
             normalized_action_data = self._normalize_action_data(action_data)
 
-        try:
-            action = Action.model_validate(normalized_action_data)
-            await log_llm_completion(
-                normalized_action_data, action.type == "tool_call", action.reasoning
-            )
+            try:
+                action = Action.model_validate(normalized_action_data)
+                await log_llm_completion(
+                    normalized_action_data, action.type == "tool_call", action.reasoning
+                )
 
-            if action.type == "tool_call":
-                if tool_schemas:
-                    # JSON responses must not attempt to specify tool details.
-                    # Require the model to trigger native function calling.
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "SYSTEM REMINDER: Tool calls must be executed via the native "
-                                "function calling interface. Respond again, trigger the tool "
-                                'directly, and only set "type" to "tool_call" in your JSON.'
+                if action.type == "tool_call":
+                    if tool_schemas:
+                        # JSON responses must not attempt to specify tool details.
+                        # Require the model to trigger native function calling.
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "SYSTEM REMINDER: Tool calls must be executed via the native "
+                                    "function calling interface. Respond again, trigger the tool "
+                                    'directly, and only set "type" to "tool_call" in your JSON.'
+                                ),
+                            }
+                        )
+                        raise PatternExecutionError(
+                            pattern_name="ReAct",
+                            message=(
+                                "Tool call requested via JSON without a native tool call. "
+                                "Tools must be invoked through the function calling API."
                             ),
-                        }
-                    )
-                    raise PatternExecutionError(
-                        pattern_name="ReAct",
-                        message=(
-                            "Tool call requested via JSON without a native tool call. "
-                            "Tools must be invoked through the function calling API."
-                        ),
-                        context={"response": response},
-                    )
-                else:
-                    # No tools available but model attempted to call one.
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "SYSTEM REMINDER: No tools are available for this task. "
-                                "Provide a final answer JSON instead of requesting a tool."
-                            ),
-                        }
-                    )
-                    raise PatternExecutionError(
-                        pattern_name="ReAct",
-                        message="Tool call requested when no tools are available.",
-                        context={"response": response},
-                    )
+                            context={"response": response},
+                        )
+                    else:
+                        # No tools available but model attempted to call one.
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "SYSTEM REMINDER: No tools are available for this task. "
+                                    "Provide a final answer JSON instead of requesting a tool."
+                                ),
+                            }
+                        )
+                        raise PatternExecutionError(
+                            pattern_name="ReAct",
+                            message="Tool call requested when no tools are available.",
+                            context={"response": response},
+                        )
 
-            return action
-        except RecursionError as e:
-            # RecursionError means JSON is too deeply nested
-            # This is a pattern failure - raise PatternExecutionError so it gets
-            # converted to observation and LLM can see the error.
-            # Raise error for retry.
-            logger.error(
-                f"RecursionError in JSON repair: JSON too deeply nested. "
-                f"Content length: {len(content) if content else 0}. "
-                f"This indicates the LLM returned malformed JSON with excessive nesting."
-            )
-            raise PatternExecutionError(
-                pattern_name="ReAct",
-                message=f"JSON parsing failed due to excessive nesting: {str(e)}",
-                context={
-                    "error_type": "RecursionError",
-                    "content_length": len(content) if content else 0,
-                    "content_preview": _truncate_for_display(content, max_len=200),
-                    "suggestion": "The LLM returned JSON with excessive nesting. This may indicate a generation loop or malformed response.",
-                },
-                cause=e,
-            )
+                return action
+            except RecursionError as e:
+                # RecursionError means JSON is too deeply nested
+                # This is a pattern failure - raise PatternExecutionError so it gets
+                # converted to observation and LLM can see the error.
+                # Raise error for retry.
+                logger.error(
+                    f"RecursionError in JSON repair: JSON too deeply nested. "
+                    f"Content length: {len(content) if content else 0}. "
+                    f"This indicates the LLM returned malformed JSON with excessive nesting."
+                )
+                raise PatternExecutionError(
+                    pattern_name="ReAct",
+                    message=f"JSON parsing failed due to excessive nesting: {str(e)}",
+                    context={
+                        "error_type": "RecursionError",
+                        "content_length": len(content) if content else 0,
+                        "content_preview": _truncate_for_display(content, max_len=200),
+                        "suggestion": "The LLM returned JSON with excessive nesting. This may indicate a generation loop or malformed response.",
+                    },
+                    cause=e,
+                )
         except json.JSONDecodeError as e:
             logging.info(f"invalid json response: {content}")
             # JSON parsing failed - raise error for retry
