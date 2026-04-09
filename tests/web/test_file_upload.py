@@ -877,12 +877,16 @@ class TestUploadDirConfiguration:
         with tempfile.TemporaryDirectory() as custom_upload_dir:
             custom_path = Path(custom_upload_dir)
 
-            # Monkey-patch UPLOADS_DIR to use custom directory
+            # Monkey-patch get_uploads_dir to use custom directory
             import xagent.web.api.files
             import xagent.web.config
 
-            monkeypatch.setattr(xagent.web.config, "UPLOADS_DIR", custom_path)
-            monkeypatch.setattr(xagent.web.api.files, "UPLOADS_DIR", custom_path)
+            monkeypatch.setattr(
+                xagent.web.config, "get_uploads_dir", lambda: custom_path
+            )
+            monkeypatch.setattr(
+                xagent.web.api.files, "get_uploads_dir", lambda: custom_path
+            )
 
             # Upload file with custom UPLOADS_DIR
             with open(file_path, "rb") as f:
