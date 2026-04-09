@@ -1,32 +1,32 @@
-# Uploaded File Path Migration Tool
+# 上传文件路径迁移工具
 
-## Background
+## 背景
 
-The `storage_path` column in the `uploaded_files` table needs conversion between different formats:
+`uploaded_files` 表中的 `storage_path` 字段需要在不同格式之间转换：
 
-- **Absolute paths**: `/uploads/user_1/web_task_123/output/file.txt`
-- **Relative paths**: `web_task_123/output/file.txt` (without `user_{user_id}` prefix)
+- **绝对路径**：`/uploads/user_1/web_task_123/output/file.txt`
+- **相对路径**：`web_task_123/output/file.txt`（不含 `user_{user_id}` 前缀）
 
-## Core Feature: Handle Multiple uploads_dir
+## 核心功能：处理多个 uploads_dir
 
-**This tool is primarily designed for cases where `XAGENT_UPLOADS_DIR` has been changed multiple times.**
+**此工具主要用于处理 `XAGENT_UPLOADS_DIR` 配置被多次修改的情况。**
 
-When the uploads directory location changes, the database contains paths with different prefixes:
+当 uploads 目录位置改变后，数据库中会存在多个不同前缀的路径：
 
 ```
-/old/location/uploads/user_1/task_1/file.txt    ← Old uploads_dir
-/new/location/uploads/user_1/task_2/file.txt    ← Middle uploads_dir
-/current/uploads/user_1/task_3/file.txt         ← Current uploads_dir
+/old/location/uploads/user_1/task_1/file.txt    ← 旧的 uploads_dir
+/new/location/uploads/user_1/task_2/file.txt    ← 中间的 uploads_dir
+/current/uploads/user_1/task_3/file.txt         ← 当前的 uploads_dir
 ```
 
-Alembic automatic migration can only handle paths under the **current configured `UPLOADS_DIR`**. Other paths require manual source directory specification.
+Alembic 自动迁移只能处理**当前配置的 `UPLOADS_DIR`**，其他路径需要手动指定源目录进行转换。
 
-**Use `-d` parameter to specify old uploads directory paths**:
+**使用 `-d` 参数指定旧的 uploads 目录路径**：
 ```bash
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old/location/uploads --confirm
 ```
 
-**Multiple source directories can be specified** (chronological order from old to new):
+**可以指定多个源目录**（按时间顺序从旧到新）：
 ```bash
 python scripts/migrate_uploads_file_abs_path.py migrate \
   -d /oldest/uploads \
@@ -35,16 +35,16 @@ python scripts/migrate_uploads_file_abs_path.py migrate \
   --confirm
 ```
 
-**Example**: Suppose your uploads directory was migrated three times:
+**示例**：假设你的 uploads 目录经历了三次迁移：
 
 ```
-/var/www/xagent/uploads          ← Used in 2023
-/home/user/xagent/uploads        ← Migrated here in 2024
-/mnt/d/work/xagent/uploads        ← Migrated here in 2025
-/current/xagent/uploads          ← Current config
+/var/www/xagent/uploads          ← 2023年使用
+/home/user/xagent/uploads        ← 2024年迁移到这
+/mnt/d/work/xagent/uploads        ← 2025年迁移到这
+/current/xagent/uploads          ← 当前配置
 ```
 
-Your database might contain paths like:
+数据库中可能存在这样的路径：
 
 ```
 /var/www/xagent/uploads/user_1/task_1/file.txt
@@ -52,7 +52,7 @@ Your database might contain paths like:
 /mnt/d/work/xagent/uploads/user_1/task_3/file.txt
 ```
 
-Run the command to unify them to relative paths:
+运行命令将它们统一转换为相对路径：
 
 ```bash
 python scripts/migrate_uploads_file_abs_path.py migrate \
@@ -62,7 +62,7 @@ python scripts/migrate_uploads_file_abs_path.py migrate \
   --confirm
 ```
 
-After conversion, all become:
+转换后都变成：
 
 ```
 task_1/file.txt
@@ -70,21 +70,23 @@ task_2/file.txt
 task_3/file.txt
 ```
 
-## When to Use This Tool
+## 何时使用此工具
 
-### Case 1: Alembic Migration Fails
+### 情况 1：Alembic 迁移失败
 
-When running `alembic upgrade` or `alembic downgrade`, if you see warnings like:
+当运行 `alembic upgrade` 或 `alembic downgrade` 时，如果看到类似警告：
 
 ```
 Warning: Could not convert /some/path to relative path (outside UPLOADS_DIR): ...
+Some paths could not be converted automatically.
+Please use the manual migration tool to fix these paths
 ```
 
-It means some file paths are not under the current `UPLOADS_DIR`, and automatic conversion failed. Use this tool to manually fix them.
+说明部分文件路径不在当前的 `UPLOADS_DIR` 下，自动转换失败。此时需要使用此工具手动处理。
 
-### Case 2: Multiple Upload Directory Migrations
+### 情况 2：uploads 目录多次迁移
 
-If `XAGENT_UPLOADS_DIR` configuration has been changed multiple times, the database may contain paths with different prefixes:
+如果 `XAGENT_UPLOADS_DIR` 配置被多次修改，数据库中可能存在多个不同前缀的路径：
 
 ```
 /old/uploads/user_1/task_1/file.txt
@@ -92,21 +94,21 @@ If `XAGENT_UPLOADS_DIR` configuration has been changed multiple times, the datab
 /current/uploads/user_1/task_3/file.txt
 ```
 
-Automatic migration can only handle the current configured directory. Other paths need manual source directory specification.
+自动迁移只能处理当前配置的目录，其他路径需要手动指定源目录进行转换。
 
-### Case 3: Mixed Path Formats
+### 情况 3：混合路径格式
 
-The database contains both absolute and relative paths, and you need to unify the format.
+数据库中同时存在绝对路径和相对路径，需要统一格式。
 
-## Usage
+## 使用方法
 
-### 1. Check Current Status
+### 1. 检查当前状态
 
 ```bash
 python scripts/migrate_uploads_file_abs_path.py check
 ```
 
-Example output:
+输出示例：
 
 ```
 Migration Status
@@ -121,19 +123,19 @@ Migration Status
 ⚠ 30 absolute paths need migration.
 ```
 
-### 2. Preview Migration (Dry-run Mode)
+### 2. 预览迁移（dry-run 模式）
 
-**Default is dry-run mode - no changes will be made to the database**. It only shows what will be converted.
+**默认是 dry-run 模式，不会修改数据库**，只会显示将要进行的转换。
 
 ```bash
-# Specify the old uploads directory (without --confirm is preview)
+# 指定旧的 uploads 目录（不带 --confirm 就是预览）
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old/path/uploads
 
-# Support multiple source directories
+# 支持指定多个源目录
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old1/uploads -d /old2/uploads
 ```
 
-Example output:
+输出示例：
 
 ```
 Migration Summary
@@ -153,16 +155,16 @@ Preview (showing 10/30 records that will be migrated):
 Use --confirm to actually migrate these records.
 ```
 
-### 3. Execute Migration
+### 3. 执行迁移
 
-**Add `--confirm` parameter to actually modify the database**.
+**添加 `--confirm` 参数才会真正修改数据库**。
 
 ```bash
-# Execute migration after confirmation
+# 确认后执行迁移
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old/path/uploads --confirm
 ```
 
-Example output:
+输出示例：
 
 ```
 Migration Summary
@@ -175,60 +177,60 @@ Migration Summary
 ✓ Successfully migrated 30 records
 ```
 
-### 4. Advanced Options
+### 4. 高级选项
 
 ```bash
-# Show all records (default: first 10 only)
+# 显示所有记录（默认只显示前 10 条）
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old/path/uploads -v
 
-# Custom batch size (default: 1000)
+# 自定义批处理大小（默认 1000）
 python scripts/migrate_uploads_file_abs_path.py migrate -d /old/path/uploads -b 500
 ```
 
-## FAQ
+## 常见问题
 
-### Q: How do I find the old uploads directory?
+### Q: 如何找到旧的 uploads 目录？
 
-A: Check paths in the database:
+A: 查看数据库中的路径：
 
 ```bash
 sqlite3 xagent.db "SELECT DISTINCT substr(storage_path, 1, 50) FROM uploaded_files LIMIT 10;"
 ```
 
-Or use the check command to see path samples.
+或者使用 check 命令查看路径样本。
 
-### Q: Do I need to run Alembic after manual migration?
+### Q: 迁移后还需要运行 Alembic 吗？
 
-A: Depends on your target state:
+A: 取决于你的目标状态：
 
-- **Target is relative paths**: After manual migration, run `alembic upgrade head` to update version
-- **Target is absolute paths**: After manual migration, run `alembic downgrade -1` to revert version
+- **目标是相对路径**：手动迁移后，运行 `alembic upgrade head` 更新版本号
+- **目标是绝对路径**：手动迁移后，运行 `alembic downgrade -1` 回退版本号
 
-### Q: Can migration fail?
+### Q: 迁移会失败吗？
 
-A: Paths not under the specified `--uploads-dir` will be skipped and counted as "Other absolute paths". Add more `-d` options to cover all paths.
+A: 如果路径不在指定的 `--uploads-dir` 下，会被跳过并统计在 "Other absolute paths" 中。添加更多 `-d` 选项来覆盖所有路径。
 
-### Q: How to rollback?
+### Q: 如何回滚？
 
-A: This script doesn't create backups. Backup your database first:
+A: 此脚本不会备份，建议先备份数据库：
 
 ```bash
 cp xagent.db xagent.db.backup
 ```
 
-## Technical Details
+## 技术说明
 
-### Path Format Rules
+### 路径格式规则
 
-- **Relative paths**: Without `user_{user_id}` prefix, e.g., `web_task_123/output/file.txt`
-- **Absolute paths**: Full path, e.g., `/uploads/user_1/web_task_123/output/file.txt`
+- **相对路径**：不含 `user_{user_id}` 前缀，如 `web_task_123/output/file.txt`
+- **绝对路径**：完整路径，如 `/uploads/user_1/web_task_123/output/file.txt`
 
-### Cross-platform Support
+### 跨平台支持
 
-The script automatically detects Windows-style paths (`C:\...`) and Unix-style paths, using the appropriate Path class for processing.
+脚本会自动检测 Windows 风格路径（`C:\...`）和 Unix 风格路径，使用对应的 Path 类进行处理。
 
-### Performance
+### 性能优化
 
-- Uses `yield_per` for streaming to avoid memory overflow
-- Batch commits (default: every 1000 records) for better performance
-- Supports large databases (millions of records)
+- 使用 `yield_per` 流式处理，避免内存溢出
+- 批量提交（默认每 1000 条），提高性能
+- 支持大型数据库（数百万条记录）
