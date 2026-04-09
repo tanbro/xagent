@@ -86,7 +86,6 @@ from ..services.kb_file_service import (
 from ..services.kb_file_service import (
     upsert_uploaded_file_record as _upsert_uploaded_file_record,
 )
-
 from .cloud_storage import get_google_credentials
 
 T = TypeVar("T", bound=Callable[..., Any])
