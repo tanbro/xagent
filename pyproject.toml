@@ -58,7 +58,9 @@ dependencies = [
   "matplotlib>=3.5.0",
   "google-auth-oauthlib>=1.2.0",
   "google-api-python-client>=2.111.0",
-  "boxlite>=0.6.0; (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+  "boxlite>=0.6.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "boxlite>=0.6.0; sys_platform == 'linux' and platform_machine == 'aarch64'",
+  "boxlite>=0.6.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
   "filelock>=3.0.0",
   "cloudpickle>=3.0.0",
   # Data science libraries (core for RAG and analysis)
