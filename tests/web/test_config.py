@@ -161,18 +161,32 @@ class TestSanitizePathComponent:
             sanitize_path_component(malicious, "collection")
 
     def test_unicode_and_special_unicode(self):
-        """Test that unicode characters are rejected (only ASCII alphanumeric allowed)."""
-        unicode_names = [
+        valid_unicode_names = [
             "collection中文",
-            "collection🚀",
             "collectioné",
             "collectionñ",
-            "collectionα",
+            "示例知识库集合",
+            "collection١٢٣",
+            "知识库_123-β",
         ]
 
-        for name in unicode_names:
-            with pytest.raises(ValueError, match="contains invalid characters"):
+        for name in valid_unicode_names:
+            result = sanitize_path_component(name, "collection")
+            assert result == name
+
+        invalid_unicode_names = [
+            "collection🚀",
+            "collectiοn",  # Greek omicron mixed with Latin
+            "cоllection",  # Cyrillic o mixed with Latin
+            "collectionα",  # Greek alpha mixed with Latin
+        ]
+        for name in invalid_unicode_names:
+            with pytest.raises(ValueError, match="contains"):
                 sanitize_path_component(name, "collection")
+
+    def test_rejects_compatibility_homoglyph_forms(self):
+        with pytest.raises(ValueError, match="contains invalid characters"):
+            sanitize_path_component("Ａgent", "collection")
 
     def test_numeric_only_names(self):
         """Test that numeric-only names are accepted."""

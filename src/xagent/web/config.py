@@ -6,6 +6,7 @@ dynamically to support environment variable changes at runtime.
 """
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Optional
 
@@ -86,9 +87,35 @@ ALLOWED_EXTENSIONS = {
 # Maximum file size (100MB)
 MAX_FILE_SIZE = 100 * 1024 * 1024
 
-# Allowed characters for collection and folder names (alphanumeric, underscore, hyphen)
-# This prevents path traversal and other security issues
-ALLOWED_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+ALLOWED_NAME_PATTERN = re.compile(r"^[\w-]+$")
+_CONFUSABLE_SCRIPT_FAMILIES = ("LATIN", "GREEK", "CYRILLIC")
+
+
+def _get_confusable_script_family(char: str) -> Optional[str]:
+    if not char.isalpha():
+        return None
+
+    try:
+        unicode_name = unicodedata.name(char)
+    except ValueError:
+        return None
+
+    for script_family in _CONFUSABLE_SCRIPT_FAMILIES:
+        if script_family in unicode_name:
+            return script_family
+
+    return None
+
+
+def _has_mixed_confusable_scripts(value: str) -> bool:
+    script_families: set[str] = set()
+    for char in value:
+        script_family = _get_confusable_script_family(char)
+        if script_family:
+            script_families.add(script_family)
+
+    return len(script_families) > 1
+
 
 # Maximum length for collection and folder names (reasonable limit for file system and database)
 # This prevents path length issues and database field overflow
@@ -133,6 +160,14 @@ def sanitize_path_component(name: str, component_type: str = "path") -> str:
     # Remove leading/trailing whitespace
     name = name.strip()
 
+    normalized_name = unicodedata.normalize("NFKC", name)
+    if normalized_name != name:
+        raise ValueError(
+            f"Invalid {component_type} name: contains invalid characters. "
+            f"Only letters, numbers, underscores, and hyphens are allowed."
+        )
+    name = normalized_name
+
     # Extract only the basename to prevent path traversal
     # This handles cases like "../../../etc" -> "etc"
     safe_name = Path(name).name
@@ -158,7 +193,12 @@ def sanitize_path_component(name: str, component_type: str = "path") -> str:
     if not ALLOWED_NAME_PATTERN.match(safe_name):
         raise ValueError(
             f"Invalid {component_type} name: contains invalid characters. "
-            f"Only alphanumeric characters, underscores, and hyphens are allowed."
+            f"Only letters, numbers, underscores, and hyphens are allowed."
+        )
+
+    if _has_mixed_confusable_scripts(safe_name):
+        raise ValueError(
+            f"Invalid {component_type} name: contains mixed-script confusable characters"
         )
 
     # Ensure the sanitized name matches the original (after stripping)
