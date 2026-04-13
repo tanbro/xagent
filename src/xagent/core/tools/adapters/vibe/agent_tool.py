@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional, Type
 from pydantic import BaseModel, Field
 
 from .....config import get_uploads_dir
+from ....utils.type_check import ensure_list
 from .base import AbstractBaseTool, ToolCategory, ToolVisibility
 
 logger = logging.getLogger(__name__)
@@ -325,8 +326,8 @@ class CreateAgentTool(AbstractBaseTool):
                 execution_mode="graph",
                 models=models_config if models_config else None,
                 knowledge_bases=None,  # No KB by default
-                skills=args.get("skills"),
-                tool_categories=args.get("tool_categories"),
+                skills=ensure_list(args.get("skills")),
+                tool_categories=ensure_list(args.get("tool_categories")),
                 suggested_prompts=[],
                 status=AgentStatus.DRAFT,  # Create as DRAFT, not PUBLISHED
             )
@@ -573,13 +574,13 @@ class UpdateAgentTool(AbstractBaseTool):
                 changes.append("instructions updated")
 
             # Update tool_categories if provided
-            new_tool_categories = args.get("tool_categories")
+            new_tool_categories = ensure_list(args.get("tool_categories"))
             if new_tool_categories is not None:
                 agent.tool_categories = new_tool_categories
                 changes.append(f"tool_categories → {new_tool_categories}")
 
             # Update skills if provided
-            new_skills = args.get("skills")
+            new_skills = ensure_list(args.get("skills"))
             if new_skills is not None:
                 agent.skills = new_skills
                 changes.append(f"skills → {new_skills}")
