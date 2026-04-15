@@ -24,7 +24,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaIoBaseDownload  # type: ignore
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...core.tools.core.RAG_tools.core.config import DEFAULT_VECTOR_STORE_SCAN_LIMIT
@@ -1428,6 +1428,300 @@ async def ingest_web(
         ) from e
 
 
+class BatchDeleteCollectionsRequest(BaseModel):
+    """Request body for batch delete collections."""
+
+    collection_names: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="List of collection names to delete",
+    )
+
+
+class BatchDeleteFailureItem(BaseModel):
+    """One failed deletion in a batch."""
+
+    name: str = Field(..., description="Collection name")
+    error: str = Field(..., description="Error message")
+
+
+class BatchDeleteCollectionsResponse(BaseModel):
+    """Response for batch delete collections."""
+
+    deleted: List[str] = Field(
+        default_factory=list,
+        description="Collection names that were deleted successfully",
+    )
+    failed: List[BatchDeleteFailureItem] = Field(
+        default_factory=list,
+        description="Collection names that failed to delete with reasons",
+    )
+
+
+def _http_detail_to_str(detail: Any) -> str:
+    """Normalize FastAPI/Starlette ``HTTPException.detail`` to a string."""
+    if isinstance(detail, str):
+        return detail
+    try:
+        return json.dumps(detail)
+    except (TypeError, ValueError):
+        return str(detail)
+
+
+def _check_can_delete_collection(
+    collection_name: str,
+    user_id: int,
+    is_admin: bool,
+) -> None:
+    """Validate collection name and non-admin delete permission."""
+    if not collection_name or not collection_name.strip():
+        raise HTTPException(status_code=422, detail="Collection name cannot be empty")
+    if is_admin:
+        return
+    try:
+        vector_store = get_vector_index_store()
+        total_count = int(
+            vector_store.count_documents_grouped_by_collection(
+                [collection_name], user_id=None, is_admin=True
+            ).get(collection_name, 0)
+        )
+        own_count = int(
+            vector_store.count_documents_grouped_by_collection(
+                [collection_name], user_id=user_id, is_admin=False
+            ).get(collection_name, 0)
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to verify collection delete permission (documents table).",
+        ) from exc
+
+    if total_count > 0 and own_count < total_count:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Only admin users can delete collections containing documents "
+                "from other users."
+            ),
+        )
+
+
+def _preflight_batch_delete_permissions(
+    unique_names: List[str],
+    user_id: int,
+    is_admin: bool,
+) -> tuple[List[str], List[BatchDeleteFailureItem]]:
+    """Preflight validation for batch delete permissions and empty names."""
+    failed: List[BatchDeleteFailureItem] = []
+    allowed: List[str] = []
+
+    if is_admin:
+        for name in unique_names:
+            if not name or not name.strip():
+                failed.append(
+                    BatchDeleteFailureItem(
+                        name=name or "",
+                        error="Collection name cannot be empty",
+                    )
+                )
+            else:
+                allowed.append(name)
+        return allowed, failed
+
+    non_empty: List[str] = []
+    for name in unique_names:
+        if not name or not name.strip():
+            failed.append(
+                BatchDeleteFailureItem(
+                    name=name or "",
+                    error="Collection name cannot be empty",
+                )
+            )
+        else:
+            non_empty.append(name)
+
+    if not non_empty:
+        return [], failed
+
+    vector_store = get_vector_index_store()
+    try:
+        totals = vector_store.count_documents_grouped_by_collection(
+            non_empty, user_id=None, is_admin=True
+        )
+        owns = vector_store.count_documents_grouped_by_collection(
+            non_empty, user_id=int(user_id), is_admin=False
+        )
+    except Exception as exc:
+        logger.error(
+            "Batch permission scan failed (vector store grouped counts): %s",
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to scan documents table for batch delete permission.",
+        ) from exc
+
+    forbidden_detail = (
+        "Only admin users can delete collections containing documents from other users."
+    )
+    for name in unique_names:
+        if not name or not name.strip():
+            continue
+        key = str(name).strip()
+        total = int(totals.get(key, 0))
+        own = int(owns.get(key, 0))
+        if total > 0 and own < total:
+            failed.append(BatchDeleteFailureItem(name=name, error=forbidden_detail))
+        else:
+            allowed.append(name)
+
+    return allowed, failed
+
+
+def _perform_kb_collection_delete(
+    collection_name: str,
+    user_id: int,
+    is_admin: bool,
+    db: Session,
+) -> CollectionOperationResult:
+    """Delete one KB collection (same pipeline as single-delete API)."""
+    try:
+        try:
+            safe_collection = sanitize_path_component(collection_name, "collection")
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid collection name: {str(e)}"
+            ) from e
+
+        _check_can_delete_collection(safe_collection, user_id, is_admin)
+
+        physical_cleanup = delete_collection_physical_dir(
+            user_id=user_id,
+            collection_name=safe_collection,
+        )
+        physical_cleanup_status = physical_cleanup.status
+        physical_cleanup_error = physical_cleanup.error
+        collection_dir = physical_cleanup.collection_dir
+        if physical_cleanup_status == "failed":
+            if (
+                physical_cleanup_error
+                == "Another operation is in progress; please try again later."
+            ):
+                raise HTTPException(status_code=409, detail=physical_cleanup_error)
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Failed to delete collection: cannot move physical files. "
+                    f"Error: {physical_cleanup_error}. "
+                    "Please ensure the directory is not in use and you have proper permissions."
+                ),
+            )
+
+        vector_store = get_vector_index_store()
+        collection_records = vector_store.list_document_records(
+            collection_name=safe_collection,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+        collection_file_ids = {
+            file_id
+            for file_id in (
+                _get_document_record_file_id(record) for record in collection_records
+            )
+            if file_id
+        }
+
+        # Re-check right before vector deletion to reduce TOCTTOU window.
+        _check_can_delete_collection(safe_collection, user_id, is_admin)
+        result = delete_collection(safe_collection, user_id, is_admin)
+
+        remaining_records = vector_store.list_document_records(
+            collection_name=None,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+        remaining_file_ids = {
+            file_id
+            for file_id in (
+                _get_document_record_file_id(record) for record in remaining_records
+            )
+            if file_id
+        }
+        deleted_uploaded_files = delete_collection_uploaded_files(
+            db,
+            user_id=user_id,
+            collection_file_ids=collection_file_ids,
+            remaining_file_ids=remaining_file_ids,
+            collection_dir=collection_dir,
+        )
+        if deleted_uploaded_files:
+            logger.info(
+                "Deleted %s UploadedFile record(s) for collection %s",
+                deleted_uploaded_files,
+                safe_collection,
+            )
+
+        cleanup_warnings = list(result.warnings) if result.warnings else []
+        cleanup_info_message = ""
+
+        if physical_cleanup_status == "success":
+            cleanup_info = (
+                f"Physical directory moved to trash: {collection_dir} "
+                "(trash cleanup requires external scheduler/cron)"
+            )
+            cleanup_warnings.append(cleanup_info)
+            cleanup_info_message = f" {cleanup_info}."
+        elif physical_cleanup_status == "not_found":
+            cleanup_info = "Physical directory cleanup: No physical directory found (collection had no files)"
+            cleanup_warnings.append(cleanup_info)
+            cleanup_info_message = f" {cleanup_info}."
+        elif physical_cleanup_status == "error" and physical_cleanup_error:
+            cleanup_info = f"Physical directory cleanup: Warning - {physical_cleanup_error}. Database deletion proceeded, but physical file cleanup status is uncertain."
+            cleanup_warnings.append(cleanup_info)
+            cleanup_info_message = f" {cleanup_info}"
+        elif physical_cleanup_status == "failed" and physical_cleanup_error:
+            cleanup_info = (
+                f"Physical directory cleanup: Failed - {physical_cleanup_error}"
+            )
+            cleanup_warnings.append(cleanup_info)
+            cleanup_info_message = f" {cleanup_info}"
+
+        final_status = result.status
+        if result.status == "success" and physical_cleanup_status in (
+            "error",
+            "failed",
+        ):
+            final_status = "partial_success"
+            if not cleanup_info_message:
+                cleanup_info_message = " Database deletion succeeded, but physical file cleanup encountered issues."
+
+        updated_message = result.message
+        if cleanup_info_message:
+            updated_message = f"{result.message}{cleanup_info_message}"
+
+        updated_result = CollectionOperationResult(
+            status=final_status,
+            collection=result.collection,
+            message=updated_message,
+            warnings=cleanup_warnings,
+            affected_documents=result.affected_documents,
+            deleted_counts=result.deleted_counts,
+        )
+
+        return updated_result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to delete collection '%s': %s", collection_name, e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete collection: {str(e)}",
+        ) from e
+
+
 @kb_router.delete(
     "/collections/{collection_name}",
 )
@@ -1452,146 +1746,86 @@ async def delete_collection_api(
     Raises:
         HTTPException: If physical deletion fails (prevents database deletion)
     """
+    return _perform_kb_collection_delete(
+        collection_name,
+        int(_user.id),
+        bool(_user.is_admin),
+        db,
+    )
+
+
+@kb_router.post(
+    "/collections/batch-delete",
+    response_model=BatchDeleteCollectionsResponse,
+)
+async def batch_delete_collections_api(
+    body: BatchDeleteCollectionsRequest,
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BatchDeleteCollectionsResponse:
+    """Delete multiple collections in one request.
+
+    For each name, runs the same pipeline as single delete (permissions, physical
+    trash, LanceDB, ``UploadedFile`` cleanup). Per-item failures are collected in
+    ``failed``; they do not roll back earlier successful deletions in the batch.
+    LanceDB removal uses ``delete_collection`` with tenant-aware ``user_id`` and
+    ``is_admin`` filtering. Returns ``deleted`` and ``failed`` name lists.
+    """
+    user_id = int(_user.id)
+    is_admin = bool(_user.is_admin)
+    deleted: List[str] = []
+
+    # Deduplicate while keeping request order.
+    seen: set[str] = set()
+    unique_names: List[str] = []
+    for raw_name in body.collection_names:
+        key = str(raw_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_names.append(raw_name)
+
+    allowed, failed = _preflight_batch_delete_permissions(
+        unique_names, user_id, is_admin
+    )
+
     try:
-        try:
-            safe_collection = sanitize_path_component(collection_name, "collection")
-        except ValueError as e:
-            raise HTTPException(
-                status_code=422, detail=f"Invalid collection name: {str(e)}"
-            ) from e
-
-        physical_cleanup = delete_collection_physical_dir(
-            user_id=int(_user.id),
-            collection_name=safe_collection,
-        )
-        physical_cleanup_status = physical_cleanup.status
-        physical_cleanup_error = physical_cleanup.error
-        collection_dir = physical_cleanup.collection_dir
-        if physical_cleanup_status == "failed":
-            if (
-                physical_cleanup_error
-                == "Another operation is in progress; please try again later."
-            ):
-                raise HTTPException(status_code=409, detail=physical_cleanup_error)
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Failed to delete collection: cannot move physical files. "
-                    f"Error: {physical_cleanup_error}. "
-                    "Please ensure the directory is not in use and you have proper permissions."
-                ),
-            )
-
-        vector_store = get_vector_index_store()
-        collection_records = vector_store.list_document_records(
-            collection_name=safe_collection,
-            user_id=int(_user.id),
-            is_admin=bool(_user.is_admin),
-        )
-        collection_file_ids = {
-            file_id
-            for file_id in (
-                _get_document_record_file_id(record) for record in collection_records
-            )
-            if file_id
-        }
-
-        result = delete_collection(safe_collection, int(_user.id), bool(_user.is_admin))
-
-        remaining_records = vector_store.list_document_records(
-            collection_name=None,
-            user_id=int(_user.id),
-            is_admin=bool(_user.is_admin),
-        )
-        remaining_file_ids = {
-            file_id
-            for file_id in (
-                _get_document_record_file_id(record) for record in remaining_records
-            )
-            if file_id
-        }
-        deleted_uploaded_files = delete_collection_uploaded_files(
-            db,
-            user_id=int(_user.id),
-            collection_file_ids=collection_file_ids,
-            remaining_file_ids=remaining_file_ids,
-            collection_dir=collection_dir,
-        )
-        if deleted_uploaded_files:
-            logger.info(
-                "Deleted %s UploadedFile record(s) for collection %s",
-                deleted_uploaded_files,
-                safe_collection,
-            )
-
-        # Step 3: Add physical cleanup status to warnings and message for visibility
-        # This ensures users are always aware of physical cleanup status, not just in logs
-        cleanup_warnings = list(result.warnings) if result.warnings else []
-        cleanup_info_message = ""
-
-        if physical_cleanup_status == "success":
-            cleanup_info = (
-                f"Physical directory moved to trash: {collection_dir} "
-                "(trash cleanup requires external scheduler/cron)"
-            )
-            cleanup_warnings.append(cleanup_info)
-            cleanup_info_message = f" {cleanup_info}."
-        elif physical_cleanup_status == "not_found":
-            cleanup_info = "Physical directory cleanup: No physical directory found (collection had no files)"
-            cleanup_warnings.append(cleanup_info)
-            cleanup_info_message = f" {cleanup_info}."
-        elif physical_cleanup_status == "error" and physical_cleanup_error:
-            # Path resolution error - database deletion proceeded, but physical cleanup status is unknown
-            cleanup_info = f"Physical directory cleanup: Warning - {physical_cleanup_error}. Database deletion proceeded, but physical file cleanup status is uncertain."
-            cleanup_warnings.append(cleanup_info)
-            cleanup_info_message = f" {cleanup_info}"
-        elif physical_cleanup_status == "failed" and physical_cleanup_error:
-            # This should not happen if we aborted above, but include for completeness
-            cleanup_info = (
-                f"Physical directory cleanup: Failed - {physical_cleanup_error}"
-            )
-            cleanup_warnings.append(cleanup_info)
-            cleanup_info_message = f" {cleanup_info}"
-
-        # Step 4: Determine final status based on both database and physical cleanup results
-        # If database deletion succeeded but physical cleanup had issues, mark as partial_success
-        final_status = result.status
-        if result.status == "success" and physical_cleanup_status in (
-            "error",
-            "failed",
-        ):
-            # Database deletion succeeded but physical cleanup had problems
-            final_status = "partial_success"
-            if not cleanup_info_message:
-                cleanup_info_message = " Database deletion succeeded, but physical file cleanup encountered issues."
-
-        # Step 5: Update message to include physical cleanup information
-        updated_message = result.message
-        if cleanup_info_message:
-            updated_message = f"{result.message}{cleanup_info_message}"
-
-        # Create updated result with cleanup information
-        # Note: CollectionOperationResult is frozen, so we create a new instance
-        updated_result = CollectionOperationResult(
-            status=final_status,
-            collection=result.collection,
-            message=updated_message,
-            warnings=cleanup_warnings,
-            affected_documents=result.affected_documents,
-            deleted_counts=result.deleted_counts,
-        )
-
-        return updated_result
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (including physical deletion failures)
+        for name in allowed:
+            try:
+                result = _perform_kb_collection_delete(name, user_id, is_admin, db)
+                if result.status in ("success", "partial_success"):
+                    deleted.append(name)
+                else:
+                    failed.append(
+                        BatchDeleteFailureItem(
+                            name=name,
+                            error=result.message or "Unknown error",
+                        )
+                    )
+            except HTTPException as e:
+                # SQL-only rollback for this request; no vector/file rollback.
+                db.rollback()
+                failed.append(
+                    BatchDeleteFailureItem(
+                        name=name,
+                        error=_http_detail_to_str(e.detail),
+                    )
+                )
+                logger.warning(
+                    "Batch delete aborted after HTTP error for %s; rolled back pending SQL.",
+                    name,
+                )
+                break
+            except Exception as e:
+                db.rollback()
+                logger.exception("Batch delete failed for collection %s: %s", name, e)
+                failed.append(BatchDeleteFailureItem(name=name, error=str(e)))
+                break
+    except Exception:
+        db.rollback()
         raise
-    except Exception as e:
-        logger.exception(f"Failed to delete collection '{safe_collection}': {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete collection: {str(e)}",
-        )
+
+    return BatchDeleteCollectionsResponse(deleted=deleted, failed=failed)
 
 
 @kb_router.post(

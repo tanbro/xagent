@@ -6,7 +6,7 @@ import hashlib
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Pattern for sanitizing document IDs and filenames
 # Only allows: letters, numbers, underscore, hyphen
@@ -42,9 +42,14 @@ def build_lancedb_filter_expression(
     """
     Builds a safe LanceDB filter expression from a dictionary of filters.
 
-    This function now uses the abstract filter layer internally for better
-    backend compatibility, while maintaining the same interface for
-    backward compatibility.
+    This function uses the abstract filter layer internally for better backend
+    compatibility, while maintaining the same interface for backward compatibility.
+
+    **Important:** Every value is emitted as a **single-quoted string literal**
+    (``column == 'value'``). Do **not** use this for Arrow/Lance columns whose
+    physical type is integer (notably ``user_id``, stored as int64 in this
+    codebase). For ``user_id`` filters, use :func:`build_user_id_filter_for_table` or
+    ``UserPermissions.get_user_filter`` (integer literal, not quoted).
 
     Args:
         filters: A dictionary where keys are column names and values are the filter values.
@@ -87,6 +92,77 @@ def build_lancedb_filter_expression(
     )
 
     return backend_filter or ""
+
+
+# Columns that are integer-typed in Lance schemas here; ``build_lancedb_filter_expression``
+# always emits quoted string literals and must not be used for these keys.
+LANCEDB_INTEGER_FILTER_KEYS: frozenset[str] = frozenset(
+    {
+        "user_id",
+        "vector_dimension",
+        "index",
+        "page_number",
+    }
+)
+
+
+def split_lancedb_filters_for_string_equality(
+    filters: Dict[str, Any],
+) -> Tuple[Dict[str, Any], frozenset[str]]:
+    """Return filters safe for :func:`build_lancedb_filter_expression` (string literals).
+
+    Drops keys in :data:`LANCEDB_INTEGER_FILTER_KEYS`. For ``user_id``, tenant
+    scoping must use :func:`build_user_id_filter_for_table` or
+    ``UserPermissions.get_user_filter``; other dropped keys need typed literals
+    or a schema-aware builder, not this helper.
+
+    Args:
+        filters: Arbitrary column -> value map from a caller (e.g. search ``filters``).
+
+    Returns:
+        ``(safe_filters, dropped_integer_column_names)``. ``safe_filters`` is always a
+        new ``dict`` (never the input reference), even when nothing is dropped.
+    """
+    dropped = frozenset(k for k in filters if k in LANCEDB_INTEGER_FILTER_KEYS)
+    if not dropped:
+        return dict(filters), frozenset()
+    stripped = {
+        k: v for k, v in filters.items() if k not in LANCEDB_INTEGER_FILTER_KEYS
+    }
+    return stripped, dropped
+
+
+def build_user_id_filter_for_table(table: Any | None, user_id: int) -> str:
+    """Build a type-safe LanceDB filter expression for ``user_id``.
+
+    This inspects the target table schema and chooses the correct literal type.
+    In strict mode, unknown schemas also default to integer literals.
+
+    Args:
+        table: LanceDB table object with optional ``schema`` metadata.
+        user_id: User ID value used for filtering.
+
+    Returns:
+        A safe filter expression for the ``user_id`` column.
+    """
+    user_id_int = int(user_id)
+    try:
+        schema = getattr(table, "schema", None)
+        if schema is not None:
+            field = schema.field("user_id")
+            field_type = str(getattr(field, "type", "")).lower()
+            if "int" in field_type:
+                return f"user_id == {user_id_int}"
+            if "string" in field_type or "utf8" in field_type:
+                raise ValueError(
+                    f"Incompatible user_id type '{field_type}'. Expected int64 schema."
+                )
+    except ValueError:
+        raise
+    except Exception:
+        # Best-effort schema introspection. Use int literal by default.
+        pass
+    return f"user_id == {user_id_int}"
 
 
 def sanitize_for_doc_id(text: str, max_length: int = 64) -> str:

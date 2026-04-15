@@ -672,13 +672,17 @@ def test_kb_delete_physical_cleanup_failure_aborts_operation(test_env, temp_uplo
 
     # Mock delete_collection to return success (database deletion would succeed)
     with (
-        patch("xagent.web.api.kb.delete_collection") as mock_delete,
+        patch("xagent.web.api.kb._check_can_delete_collection"),
         patch(
-            "xagent.web.services.kb_collection_service.move_collection_dir_to_trash"
-        ) as mock_move_to_trash,
+            "xagent.web.api.kb.delete_collection_physical_dir"
+        ) as mock_physical_delete,
+        patch("xagent.web.api.kb.delete_collection") as mock_delete,
     ):
         from xagent.core.tools.core.RAG_tools.core.schemas import (
             CollectionOperationResult,
+        )
+        from xagent.web.services.kb_collection_service import (
+            CollectionPhysicalDeleteResult,
         )
 
         mock_delete.return_value = CollectionOperationResult(
@@ -688,9 +692,11 @@ def test_kb_delete_physical_cleanup_failure_aborts_operation(test_env, temp_uplo
             affected_documents=[],
             deleted_counts={},
         )
-
-        # Simulate move-to-trash failure (delete now uses rename-to-trash, not rmtree)
-        mock_move_to_trash.side_effect = PermissionError("Permission denied")
+        mock_physical_delete.return_value = CollectionPhysicalDeleteResult(
+            status="failed",
+            error="Permission denied",
+            collection_dir=coll_dir,
+        )
 
         # Attempt to delete collection
         response = client.delete(
@@ -717,10 +723,19 @@ def test_kb_delete_returns_physical_cleanup_status(test_env, temp_uploads):
     coll_dir.mkdir(parents=True, exist_ok=True)
     (coll_dir / "some_file.txt").write_text("data")
 
-    # Mock delete_collection
-    with patch("xagent.web.api.kb.delete_collection") as mock_delete:
+    # Mock delete_collection and permission check path.
+    with (
+        patch("xagent.web.api.kb._check_can_delete_collection"),
+        patch(
+            "xagent.web.api.kb.delete_collection_physical_dir"
+        ) as mock_physical_delete,
+        patch("xagent.web.api.kb.delete_collection") as mock_delete,
+    ):
         from xagent.core.tools.core.RAG_tools.core.schemas import (
             CollectionOperationResult,
+        )
+        from xagent.web.services.kb_collection_service import (
+            CollectionPhysicalDeleteResult,
         )
 
         mock_delete.return_value = CollectionOperationResult(
@@ -729,6 +744,10 @@ def test_kb_delete_returns_physical_cleanup_status(test_env, temp_uploads):
             message="deleted",
             affected_documents=[],
             deleted_counts={},
+        )
+        mock_physical_delete.return_value = CollectionPhysicalDeleteResult(
+            status="success",
+            collection_dir=coll_dir,
         )
 
         # Delete collection
@@ -1290,20 +1309,26 @@ def test_delete_document_prefers_file_id_and_cleans_orphan_file(test_env, temp_u
         }
     ]
 
-    def _fake_list_documents_for_user(*args, **kwargs):
-        return list(document_state)
-
     def _fake_delete_document(collection_name, doc_id, user_id, is_admin):
         document_state.clear()
 
+    # Don't mock delete_uploaded_file_if_orphaned - let it actually run and delete the file
     with (
         patch(
             "xagent.web.api.kb._list_documents_for_user",
-            side_effect=_fake_list_documents_for_user,
+            side_effect=[list(document_state), []],
+        ),
+        patch(
+            "xagent.web.api.kb._build_uploaded_filename_map",
+            return_value={target_file_id: "orphan.txt"},
         ),
         patch(
             "xagent.core.tools.core.RAG_tools.management.collections.delete_document",
             side_effect=_fake_delete_document,
+        ),
+        patch(
+            "xagent.web.services.kb_file_service.get_uploads_dir",
+            return_value=temp_uploads.resolve(),
         ),
     ):
         response = client.delete(
@@ -1312,7 +1337,7 @@ def test_delete_document_prefers_file_id_and_cleans_orphan_file(test_env, temp_u
         )
 
     assert response.status_code == 200
-    assert not file_path.exists()
+    assert not file_path.exists(), f"File still exists at {file_path}"
 
     session = TestingSessionLocal()
     try:

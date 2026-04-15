@@ -41,6 +41,7 @@ from ..management.status import (
     write_ingestion_status,
 )
 from ..storage.factory import get_metadata_store, get_vector_index_store
+from ..utils.lancedb_query_utils import _safe_count_rows
 from ..utils.string_utils import build_lancedb_filter_expression, escape_lancedb_string
 from ..utils.user_permissions import UserPermissions
 from ..version_management.cascade_cleaner import cleanup_document_cascade
@@ -168,7 +169,7 @@ def _iter_batches(
                 arrow_table = arrow_table.filter(mask)
             elif "user_id ==" in user_filter:
                 # Filter for specific user_id
-                match = re.search(r"user_id == (-?\d+)", user_filter)
+                match = re.search(r"user_id == '?(-?\d+)'?", user_filter)
                 if match:
                     user_val = int(match.group(1))
                     mask = pa.compute.equal(
@@ -236,9 +237,7 @@ def _count_rows(
     filter_expr = build_lancedb_filter_expression(filters)
 
     try:
-        if filter_expr:
-            return int(table.count_rows(filter_expr))
-        return int(table.count_rows())
+        return _safe_count_rows(table, filter_expr if filter_expr else None)
     except Exception as exc:  # noqa: BLE001 - convert to warning
         message = f"Failed to count rows in '{table_name}': {exc}"
         logger.warning(message)
@@ -526,6 +525,7 @@ async def list_collections(
         )
 
         document_names: Dict[str, Set[str]] = defaultdict(set)
+        owners: Dict[str, Set[int]] = defaultdict(set)
         document_metadata: Dict[str, List[CollectionDocumentMetadata]] = defaultdict(
             list
         )
@@ -576,7 +576,13 @@ async def list_collections(
         def _collect_document_names() -> None:
             for batch in vector_store.iter_batches(
                 table_name="documents",
-                columns=["collection", "source_path", "doc_id", "file_id"],
+                columns=[
+                    "collection",
+                    "source_path",
+                    "doc_id",
+                    "file_id",
+                    "user_id",
+                ],
                 user_id=user_id,
                 is_admin=is_admin,
             ):
@@ -584,6 +590,7 @@ async def list_collections(
                 source_idx = batch.schema.get_field_index("source_path")
                 doc_id_idx = batch.schema.get_field_index("doc_id")
                 file_id_idx = batch.schema.get_field_index("file_id")
+                user_idx = batch.schema.get_field_index("user_id")
                 if collection_idx == -1:
                     continue
                 collection_array = batch.column(collection_idx)
@@ -602,6 +609,11 @@ async def list_collections(
                     if file_id_idx != -1
                     else pa.array([None] * batch.num_rows)
                 )
+                user_array = (
+                    batch.column(user_idx)
+                    if user_idx != -1
+                    else pa.array([None] * batch.num_rows)
+                )
                 for idx in range(batch.num_rows):
                     collection_raw = collection_array[idx].as_py()
                     if not collection_raw:
@@ -613,6 +625,12 @@ async def list_collections(
                         doc_id_array[idx].as_py(),
                         file_id_array[idx].as_py(),
                     )
+                    user_val = user_array[idx].as_py()
+                    if user_val is not None:
+                        try:
+                            owners[collection_key].add(int(user_val))
+                        except (TypeError, ValueError):
+                            pass
 
         _collect_document_names()
 
@@ -660,6 +678,7 @@ async def list_collections(
                     ),
                 ),
                 ingestion_config=collection_configs.get(collection),
+                owners=sorted(owners.get(collection, set())),
             )
             for collection in collection_keys
         ]
@@ -1101,6 +1120,8 @@ def delete_document(
         counts = cleanup_document_cascade(
             collection=collection,
             doc_id=doc_id,
+            user_id=user_id,
+            is_admin=is_admin,
             preview_only=False,
             confirm=True,
         )

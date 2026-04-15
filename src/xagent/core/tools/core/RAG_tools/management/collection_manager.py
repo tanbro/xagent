@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
+import pyarrow as pa  # type: ignore
+
 from ..core.parser_registry import get_supported_parsers, validate_parser_compatibility
 from ..core.schemas import CollectionInfo
 from ..storage.factory import get_metadata_store, get_vector_index_store
@@ -135,6 +137,10 @@ class CollectionManager:
     def __init__(self) -> None:
         self._metadata_store = get_metadata_store()
 
+    async def _get_connection(self) -> Any:
+        """Get raw metadata storage connection for legacy helper methods."""
+        return self._metadata_store.get_raw_connection()
+
     async def get_collection(self, collection_name: str) -> CollectionInfo:
         """Get collection metadata from storage.
 
@@ -196,6 +202,75 @@ class CollectionManager:
                     f"Save attempt {attempt + 1} failed for {collection.name}, retrying in {wait_time}s: {e}"
                 )
                 await asyncio.sleep(wait_time)
+
+    async def _ensure_metadata_table(self) -> None:
+        """Ensure collection_metadata table exists in LanceDB.
+
+        Creates the table if it doesn't exist, otherwise does nothing.
+        """
+
+        conn = await self._get_connection()
+
+        schema = pa.schema(
+            [
+                ("name", pa.string()),
+                ("schema_version", pa.string()),
+                ("embedding_model_id", pa.string()),  # Nullable
+                ("embedding_dimension", pa.int32()),  # Nullable
+                ("documents", pa.int32()),
+                ("processed_documents", pa.int32()),
+                ("parses", pa.int32()),
+                ("chunks", pa.int32()),
+                ("embeddings", pa.int32()),
+                ("document_names", pa.string()),  # JSON string
+                (
+                    "owners",
+                    pa.string(),
+                ),  # Schema-only; not maintained (derived at list time from user_id)
+                ("collection_locked", pa.bool_()),
+                ("allow_mixed_parse_methods", pa.bool_()),
+                ("skip_config_validation", pa.bool_()),
+                ("ingestion_config", pa.string()),  # JSON string
+                ("created_at", pa.timestamp("us")),
+                ("updated_at", pa.timestamp("us")),
+                ("last_accessed_at", pa.timestamp("us")),
+                ("extra_metadata", pa.string()),  # JSON string
+            ]
+        )
+
+        # Check if table already exists
+        table_names_fn = getattr(conn, "table_names", None)
+        table_exists = False
+        if table_names_fn:
+            try:
+                existing_tables = table_names_fn()
+                table_exists = "collection_metadata" in existing_tables
+            except Exception as e:
+                logger.debug(f"Table names check failed: {e}")
+
+        if not table_exists:
+            try:
+                conn.create_table("collection_metadata", schema=schema)
+            except Exception as e:
+                logger.debug(f"Table creation failed (may already exist): {e}")
+                # Table might already exist, continue
+        else:
+            # Table exists: ensure it has the "owners" column (schema compat; column is not maintained)
+            try:
+                table = conn.open_table("collection_metadata")
+                if hasattr(table, "schema") and table.schema is not None:
+                    names = getattr(table.schema, "names", None) or []
+                    if "owners" not in names:
+                        add_fn = getattr(table, "add_columns", None)
+                        if add_fn is not None:
+                            add_fn({"owners": "cast('[]' as string)"})
+                            logger.info(
+                                "collection_metadata: added missing 'owners' column (schema-only)"
+                            )
+            except Exception as e:
+                logger.debug(
+                    "Could not migrate collection_metadata schema (add owners): %s", e
+                )
 
     async def initialize_collection_embedding(
         self, collection_name: str, embedding_model_id: str

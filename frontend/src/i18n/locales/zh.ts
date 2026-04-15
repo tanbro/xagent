@@ -1473,11 +1473,14 @@ Build when you need.`
       webIngestFailed: "网站导入失败",
       deleteFailed: "删除知识库失败: {name}",
       deleteFailedGeneric: "删除知识库失败",
+      batchDeleteFailed: "批量删除失败",
       unsupportedFileType: "部分文件格式不支持，已跳过",
       failedAtStep: "失败步骤: {step}",
     },
     actions: {
       deleteConfirm: "确定要删除知识库 {name} 吗？此操作无法撤销。",
+      deleteConfirmWithName: "确定要删除知识库「{name}」吗？此操作不可撤销。",
+      batchDeleteConfirm: "确定要删除选中的 {count} 个知识库吗？此操作不可撤销。",
     },
     loading: {
       loadingKB: "正在加载知识库...",
@@ -1486,9 +1489,23 @@ Build when you need.`
       title: "知识库管理",
       description: "管理文档集合和搜索索引",
       new: "新建知识库",
+      totalCount: "共 {total} 个",
+      matchCount: "匹配 {matched} / 共 {total} 个",
     },
     search: {
       placeholder: "搜索知识库...",
+    },
+    manage: {
+      enter: "管理",
+      exit: "取消管理",
+      selectAll: "全选",
+      deselectAll: "取消全选",
+      deleteSelected: "删除所选 ({count})",
+    },
+    messages: {
+      deleteSuccess: "知识库已删除",
+      batchDeleteSuccess: "已删除 {count} 个知识库",
+      batchDeleteFailedCount: "{count} 个删除失败",
     },
     card: {
       documentsLabel: "文档",
@@ -1496,8 +1513,11 @@ Build when you need.`
       embeddingsLabel: "向量",
       parsesLabel: "解析",
       noDescription: "暂无描述",
+      ownerLabel: "归属用户: {owners}",
+      ownerFallbackLabel: "归属用户（名称加载失败，显示ID）: {owners}",
       actions: {
         viewDetail: "查看详情",
+        delete: "删除知识库",
       },
       status: {
         active: "活跃",
