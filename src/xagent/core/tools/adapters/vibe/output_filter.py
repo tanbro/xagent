@@ -236,8 +236,9 @@ class OutputValueFilter:
             return value
 
         truncated = value[: self.max_chars]
+        result = truncated + DEFAULT_TRUNCATION_MESSAGE
         logger.info(
             f"Tool '{tool_name}' output truncated: "
-            f"{len(value)} -> {len(truncated)} characters"
+            f"{len(value)} -> {len(result)} characters"
         )
-        return truncated + DEFAULT_TRUNCATION_MESSAGE
+        return result
