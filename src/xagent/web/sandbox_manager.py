@@ -349,7 +349,8 @@ def _create_sandbox_service() -> Optional[SandboxService]:
 
     Environment variables:
     - SANDBOX_ENABLED: Enable/disable sandbox (default: true)
-    - SANDBOX_IMPLEMENTATION: Implementation type (default: boxlite)
+    - SANDBOX_IMPLEMENTATION: Implementation type (default: docker)
+      - docker: Use Docker sandbox
       - boxlite: Use Boxlite sandbox
     - BOXLITE_HOME_DIR: Boxlite home directory (optional)
 
@@ -363,15 +364,17 @@ def _create_sandbox_service() -> Optional[SandboxService]:
         return None
 
     # Get implementation type
-    implementation = os.getenv("SANDBOX_IMPLEMENTATION", "boxlite")
+    implementation = os.getenv("SANDBOX_IMPLEMENTATION", "docker")
 
     if implementation == "boxlite":
         return _create_boxlite_service()
+    elif implementation == "docker":
+        return _create_docker_service()
     else:
         logger.warning(
-            f"Unknown sandbox implementation: {implementation}, falling back to boxlite"
+            f"Unknown sandbox implementation: {implementation}, falling back to docker"
         )
-        return _create_boxlite_service()
+        return _create_docker_service()
 
 
 def _create_boxlite_service() -> Optional[SandboxService]:
@@ -398,6 +401,28 @@ def _create_boxlite_service() -> Optional[SandboxService]:
         )
     except Exception as e:
         logger.error(f"Failed to create Boxlite sandbox service: {e}")
+
+    return service
+
+
+def _create_docker_service() -> Optional[SandboxService]:
+    """Create Docker sandbox service."""
+    try:
+        from ..sandbox import DockerSandboxService
+    except ImportError:
+        logger.error("docker sandbox dependencies are not installed.")
+        return None
+
+    from .sandbox_store import DBDockerStore
+
+    store = DBDockerStore()
+
+    service = None
+    try:
+        service = DockerSandboxService(store=store)
+        logger.info("Created Docker sandbox service")
+    except Exception as e:
+        logger.error(f"Failed to create Docker sandbox service: {e}")
 
     return service
 

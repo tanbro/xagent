@@ -1,28 +1,24 @@
 """
-BoxliteSandbox tests
+DockerSandbox tests
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import socket
 import tempfile
 
 import pytest
 
-try:
-    import boxlite  # noqa: F401
-except ImportError:
-    pytest.skip(
-        "boxlite not installed, skipping sandbox tests", allow_module_level=True
-    )
-
+import xagent.sandbox.docker_sandbox as docker_sandbox_module
 from xagent.sandbox import DEFAULT_SANDBOX_IMAGE
 from xagent.sandbox.base import SandboxConfig, SandboxTemplate
-from xagent.sandbox.boxlite_sandbox import (
-    BoxliteSandbox,
-    BoxliteSandboxService,
-    MemBoxliteStore,
+from xagent.sandbox.docker_sandbox import (
+    DockerSandboxService,
+    MemDockerStore,
+    _SandboxControl,
+    is_docker_available,
 )
 
 
@@ -33,55 +29,106 @@ def event_loop():
     loop.close()
 
 
-def _check_boxlite_available() -> bool:
-    """Check if boxlite is available"""
-    try:
-        try:
-            boxlite.Boxlite.default()
-            print("\n✓ Boxlite initialized successfully")
-            return True
-        except BaseException as e:
-            error_msg = f"✗ Boxlite initialization failed: {type(e).__name__}: {e}"
-            print(f"\n{error_msg}")
-            return False
-    except ImportError as e:
-        error_msg = f"✗ Boxlite import failed: {type(e).__name__}: {e}"
-        print(f"\n{error_msg}")
-        return False
-
-
-requires_boxlite = pytest.mark.skipif(
-    not _check_boxlite_available(), reason="Requires boxlite runtime"
+requires_docker = pytest.mark.skipif(
+    not is_docker_available(), reason="Requires reachable Docker daemon"
 )
 
 
 @pytest.fixture(scope="module")
-def boxlite_service():
-    """Provide a shared Boxlite sandbox service for integration-style tests."""
-    return BoxliteSandboxService(MemBoxliteStore())
+def docker_service():
+    """Provide a shared Docker sandbox service for integration-style tests."""
+    return DockerSandboxService(MemDockerStore())
 
 
-class TestBoxliteSandboxRunCodeValidation:
+class _FakeContainerCollection:
+    """Minimal Docker container collection stub for service unit tests."""
+
+    def __init__(self, containers=()):
+        self._containers = containers
+
+    def list(self, *args, **kwargs):
+        return list(self._containers)
+
+
+class _FakeDockerClient:
+    """Minimal Docker client stub for service unit tests."""
+
+    def __init__(self, containers=()):
+        self.containers = _FakeContainerCollection(containers)
+
+    def ping(self):
+        return True
+
+
+class _FailingStartContainer:
+    """Container stub whose start fails before sandbox initialization finishes."""
+
+    def __init__(self) -> None:
+        self.remove_calls: list[bool] = []
+
+    def start(self) -> None:
+        raise RuntimeError("port conflict")
+
+    def remove(self, force: bool = False) -> None:
+        self.remove_calls.append(force)
+
+
+def _get_free_host_port() -> int:
+    """Reserve an ephemeral host port for Docker port-mapping tests."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        return int(sock.getsockname()[1])
+
+
+class TestDockerSandboxServiceFailures:
+    """Test failure cleanup paths that do not require Docker."""
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_removes_container_when_start_fails(self, monkeypatch):
+        """Failed startup should remove the newly-created container."""
+        created_container = _FailingStartContainer()
+
+        async def fake_create_container(*args, **kwargs):
+            return created_container
+
+        monkeypatch.setattr(
+            docker_sandbox_module, "_create_container", fake_create_container
+        )
+        service = DockerSandboxService(MemDockerStore(), client=_FakeDockerClient())
+
+        with pytest.raises(RuntimeError, match="port conflict"):
+            await service.get_or_create(
+                "start-failure",
+                template=SandboxTemplate(type="image", image=DEFAULT_SANDBOX_IMAGE),
+                config=SandboxConfig(),
+            )
+
+        assert len(created_container.remove_calls) == 1
+        assert created_container.remove_calls[0] is True
+
+
+class TestDockerSandboxRunCodeValidation:
     """Test lightweight run_code validation paths."""
 
     @pytest.mark.asyncio
     async def test_run_code_rejects_unsupported_code_type(self):
         """Unsupported code types should fail explicitly."""
-        sandbox = object.__new__(BoxliteSandbox)
+        sandbox = object.__new__(docker_sandbox_module.DockerSandbox)
 
         with pytest.raises(ValueError, match="Unsupported code type: ruby"):
             await sandbox.run_code("puts 'hi'", code_type="ruby")  # type: ignore[arg-type]
 
 
-@requires_boxlite
-class TestBoxliteSandboxService:
-    """Test BoxliteSandboxService service layer functionality"""
+@requires_docker
+class TestDockerSandboxService:
+    """Test DockerSandboxService service layer functionality"""
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_create_and_delete_sandbox(self, boxlite_service):
+    async def test_create_and_delete_sandbox(self, docker_service):
         """Test creating and deleting sandbox"""
         name = "test_create_and_delete_sandbox"
-        service = boxlite_service
+        service = docker_service
 
         # Cleanup
         try:
@@ -96,6 +143,7 @@ class TestBoxliteSandboxService:
             template = SandboxTemplate(type="image", image=DEFAULT_SANDBOX_IMAGE)
 
             temp_dir = tempfile.mkdtemp()
+            host_port = _get_free_host_port()
             config = SandboxConfig(
                 cpus=2,
                 memory=1024,
@@ -107,7 +155,7 @@ class TestBoxliteSandboxService:
                 ],
                 network_isolated=False,
                 ports=[
-                    (8080, 80),  # Host 8080 -> Container 80
+                    (host_port, 80),  # Host dynamic port -> Container 80
                 ],
             )
             sandbox = await service.get_or_create(
@@ -122,13 +170,11 @@ class TestBoxliteSandboxService:
             assert info.config == config
             assert info.state == "running"
 
-            # Check using native interface, can only check partial fields
-            raw_info = sandbox._box.info()
-            assert raw_info.name == name
-            assert raw_info.image == template.image
-            assert raw_info.cpus == config.cpus
-            assert raw_info.memory_mib == config.memory
-            assert raw_info.created_at == info.created_at
+            assert info.name == name
+            assert info.template.image == template.image
+            assert info.config.cpus == config.cpus
+            assert info.config.memory == config.memory
+            assert info.created_at is not None
 
             # Verify environment variables are effective
             result = await sandbox.exec("sh", "-c", "echo $MY_VAR")
@@ -155,15 +201,17 @@ class TestBoxliteSandboxService:
             )
             await asyncio.sleep(2)  # Wait for server to start
 
-            # Send HTTP request from host to mapped port (host 8080 -> container 80)
+            # Send HTTP request from host to mapped port.
             import urllib.request
 
             try:
-                response = urllib.request.urlopen("http://127.0.0.1:8080", timeout=3)
+                response = urllib.request.urlopen(
+                    f"http://127.0.0.1:{host_port}", timeout=3
+                )
                 status_code = response.getcode()
                 if status_code == 200:
                     print(
-                        "✓ Port mapping configuration effective (host 8080 -> container 80, HTTP request successful)"
+                        f"✓ Port mapping configuration effective (host {host_port} -> container 80, HTTP request successful)"
                     )
                 else:
                     print(f"⚠ Port mapping test: HTTP status code {status_code}")
@@ -180,8 +228,8 @@ class TestBoxliteSandboxService:
             # Delete sandbox
             await service.delete(name)
 
-            box = await service._runtime.get(name)
-            assert box is None
+            container = await service._find_container(name)
+            assert container is None
 
             print("✅ Create and delete test passed")
 
@@ -192,10 +240,10 @@ class TestBoxliteSandboxService:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_get_or_create_reuse(self, boxlite_service):
+    async def test_get_or_create_reuse(self, docker_service):
         """Test get_or_create reuse logic"""
         name = "test_get_or_create_reuse"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -237,10 +285,10 @@ class TestBoxliteSandboxService:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_list_sandboxes(self, boxlite_service):
+    async def test_list_sandboxes(self, docker_service):
         """Test listing sandboxes"""
         sandbox_names = ["test-list-1", "test-list-2"]
-        service = boxlite_service
+        service = docker_service
 
         # Cleanup
         for name in sandbox_names:
@@ -285,10 +333,10 @@ class TestBoxliteSandboxService:
                     pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_concurrent_get_or_create(self, boxlite_service):
+    async def test_concurrent_get_or_create(self, docker_service):
         """Test if concurrent get_or_create with same name causes conflicts"""
         name = "test_concurrent_get_or_create"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -337,10 +385,10 @@ class TestBoxliteSandboxService:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_concurrent_sandbox_exec(self, boxlite_service):
+    async def test_concurrent_sandbox_exec(self, docker_service):
         """Test if concurrent execution on same sandbox instance causes conflicts"""
         name = "test_concurrent_sandbox_exec"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -384,10 +432,10 @@ class TestBoxliteSandboxService:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_concurrent_sandboxs_exec(self, boxlite_service):
+    async def test_concurrent_sandboxs_exec(self, docker_service):
         """Test if concurrent execution on different sandbox instances (same underlying box) causes conflicts"""
         name = "test_concurrent_sandboxs_exec"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -445,16 +493,154 @@ class TestBoxliteSandboxService:
             except Exception:
                 pass
 
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_create_snapshot_rejects_duplicate_id(self, docker_service):
+        """Creating the same snapshot ID twice should fail."""
+        name = "test_snapshot_duplicate_id"
+        snapshot_id = "duplicate-snapshot"
+        service = docker_service
 
-@requires_boxlite
-class TestBoxliteSandbox:
-    """Test BoxliteSandbox instance functionality"""
+        try:
+            await service.delete(name)
+        except Exception:
+            pass
+        try:
+            await service.delete_snapshot(snapshot_id)
+        except Exception:
+            pass
+
+        try:
+            sandbox = await service.get_or_create(
+                name,
+                template=SandboxTemplate(type="image", image=DEFAULT_SANDBOX_IMAGE),
+                config=SandboxConfig(cpus=1, memory=512),
+            )
+            await sandbox.write_file("v1", "/root/data.txt", overwrite=True)
+
+            first_snapshot = await service.create_snapshot(name, snapshot_id)
+            assert first_snapshot.snapshot_id == snapshot_id
+
+            with pytest.raises(FileExistsError):
+                await service.create_snapshot(name, snapshot_id)
+        finally:
+            try:
+                await service.delete(name)
+            except Exception:
+                pass
+            try:
+                await service.delete_snapshot(snapshot_id)
+            except Exception:
+                pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_exec_command(self, boxlite_service):
+    async def test_snapshot_lifecycle(self, docker_service):
+        """Test snapshot create, restore, list, and delete behavior."""
+        name = "test_snapshot_lifecycle"
+        clone_name = "test_snapshot_lifecycle_clone"
+        snapshot_id = "test_snapshot_id"
+        service = docker_service
+
+        for sandbox_name in (name, clone_name):
+            try:
+                await service.delete(sandbox_name)
+            except Exception:
+                pass
+
+        try:
+            sandbox = await service.get_or_create(
+                name,
+                template=SandboxTemplate(type="image", image=DEFAULT_SANDBOX_IMAGE),
+                config=SandboxConfig(cpus=1, memory=512),
+            )
+            await sandbox.write_file(
+                "snapshot-data", "/root/snapshot.txt", overwrite=True
+            )
+
+            snapshot = await service.create_snapshot(name, snapshot_id)
+            assert snapshot.snapshot_id == snapshot_id
+
+            snapshots = await service.list_snapshots()
+            assert [item.snapshot_id for item in snapshots] == [snapshot_id]
+
+            clone = await service.get_or_create(
+                clone_name,
+                template=SandboxTemplate(type="snapshot", snapshot_id=snapshot_id),
+                config=SandboxConfig(cpus=1, memory=512),
+            )
+            clone_info = await clone.info()
+            assert clone_info.template.type == "snapshot"
+            assert clone_info.template.snapshot_id == snapshot_id
+            assert await clone.read_file("/root/snapshot.txt") == "snapshot-data"
+
+            with pytest.raises(RuntimeError):
+                await service.delete_snapshot(snapshot_id)
+
+            await service.delete(clone_name)
+            await service.delete_snapshot(snapshot_id)
+            assert await service.list_snapshots() == []
+        finally:
+            for sandbox_name in (name, clone_name):
+                try:
+                    await service.delete(sandbox_name)
+                except Exception:
+                    pass
+
+
+class TestSandboxControl:
+    """Test `_SandboxControl` concurrency guarantees."""
+
+    @pytest.mark.asyncio
+    async def test_operation_releases_on_repeated_cancellation(self):
+        """`operation()` should release active ops even if exit is cancelled again."""
+        control = _SandboxControl(name="cancel-safe")
+        # The operation body has started; `active_ops` should now be 1.
+        body_entered = asyncio.Event()
+        # Cleanup has entered `release_operation()`.
+        release_started = asyncio.Event()
+        # Hold release so the second cancellation lands during cleanup.
+        allow_release = asyncio.Event()
+        original_release = control.release_operation
+
+        async def delayed_release() -> None:
+            """Delay release until the test injects a second cancellation."""
+            release_started.set()
+            await allow_release.wait()
+            await original_release()
+
+        # Replace release with a controllable wrapper.
+        control.release_operation = delayed_release  # type: ignore[method-assign]
+
+        async def worker() -> None:
+            async with control.operation():
+                body_entered.set()
+                await asyncio.Event().wait()
+
+        task = asyncio.create_task(worker())
+        await body_entered.wait()
+        assert control.active_ops == 1
+
+        task.cancel()
+        await release_started.wait()
+        # Cancel again while cleanup is running.
+        task.cancel()
+        allow_release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Cleanup must still release the operation.
+        assert control.active_ops == 0
+
+
+@requires_docker
+class TestDockerSandbox:
+    """Test DockerSandbox instance functionality"""
+
+    @pytest.mark.asyncio(loop_scope="module")
+    async def test_exec_command(self, docker_service):
         """Test executing commands"""
         name = "test_exec_command"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -492,10 +678,10 @@ class TestBoxliteSandbox:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_run_python_code(self, boxlite_service):
+    async def test_run_python_code(self, docker_service):
         """Test running Python code"""
         name = "test_run_python_code"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -542,10 +728,10 @@ class TestBoxliteSandbox:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_run_node_code(self, boxlite_service):
+    async def test_run_node_code(self, docker_service):
         """Test running Node.js code"""
         name = "test_run_node_code"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -590,10 +776,10 @@ class TestBoxliteSandbox:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_file_read_write(self, boxlite_service):
+    async def test_file_read_write(self, docker_service):
         """Test file read and write operations"""
         name = "test_file_read_write"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -646,10 +832,10 @@ class TestBoxliteSandbox:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_upload_download(self, boxlite_service):
+    async def test_upload_download(self, docker_service):
         """Test file upload and download"""
         name = "test_upload_download"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
@@ -727,10 +913,10 @@ class TestBoxliteSandbox:
                 pass
 
     @pytest.mark.asyncio(loop_scope="module")
-    async def test_upload_download_with_volume(self, boxlite_service):
+    async def test_upload_download_with_volume(self, docker_service):
         """Test upload/download compatibility with volume mounts"""
         name = "test_upload_download_with_volume"
-        service = boxlite_service
+        service = docker_service
 
         try:
             await service.delete(name)
