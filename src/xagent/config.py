@@ -40,6 +40,10 @@ SANDBOX_ENV = "SANDBOX_ENV"
 SANDBOX_VOLUMES = "SANDBOX_VOLUMES"
 BOXLITE_HOME_DIR = "BOXLITE_HOME_DIR"
 
+TOOL_MAX_OUTPUT_LENGTH = "XAGENT_TOOL_MAX_OUTPUT_LENGTH"
+TOOL_MAX_RECURSION_DEPTH = "XAGENT_TOOL_MAX_RECURSION_DEPTH"
+TOOL_MAX_FIELD_COUNT = "XAGENT_TOOL_MAX_FIELD_COUNT"
+
 
 def get_web_dir() -> Path:
     """Get the web directory path.
@@ -349,3 +353,59 @@ def get_boxlite_home_dir() -> Path | None:
     if env_str:
         return Path(env_str)
     return None
+
+
+def get_tool_max_output_length() -> int:
+    """Get the maximum per-string output length for tools.
+
+    This limit applies to individual string values within the output structure,
+    not the total output size. The total output size is indirectly controlled
+    by the combination of per-string limit, max field count, and max recursion depth.
+
+    Returns:
+        Maximum per-string length from TOOL_MAX_OUTPUT_LENGTH env var, or 50k by default
+    """
+    env_str = os.getenv(TOOL_MAX_OUTPUT_LENGTH)
+    if env_str:
+        try:
+            return int(env_str)
+        except ValueError:
+            logger.warning("Invalid TOOL_MAX_OUTPUT_LENGTH value: {env_str}")
+    return 50 * 1024
+
+
+def get_tool_max_recursion_depth() -> int:
+    """Get the maximum recursion depth for tools.
+
+    Returns:
+        Maximum recursion depth from TOOL_MAX_RECURSION_DEPTH env var, or 20 by default.
+        20 layers is sufficient for most real-world data structures while preventing
+        excessively deep nesting that could cause performance issues.
+    """
+    env_str = os.getenv(TOOL_MAX_RECURSION_DEPTH)
+    if env_str:
+        try:
+            return int(env_str)
+        except ValueError:
+            logger.warning("Invalid TOOL_MAX_RECURSION_DEPTH value: {env_str}")
+    return 20
+
+
+def get_tool_max_field_count() -> int:
+    """Get the maximum number of fields/items in dict/list for tools.
+
+    This helps control total output size by limiting the cardinality of
+    collections. Combined with per-string length and recursion depth limits,
+    it provides reasonable protection against excessive output without
+    requiring expensive total size calculation.
+
+    Returns:
+        Maximum fields from TOOL_MAX_FIELD_COUNT env var, or 1000 by default
+    """
+    env_str = os.getenv(TOOL_MAX_FIELD_COUNT)
+    if env_str:
+        try:
+            return int(env_str)
+        except ValueError:
+            logger.warning("Invalid TOOL_MAX_FIELDS value: {env_str}")
+    return 1000

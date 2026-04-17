@@ -9,6 +9,8 @@ to the ToolFactory in a unified way.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
+from ..... import config as _root_config
+
 
 class BaseToolConfig(ABC):
     """Abstract base class for tool configuration."""
@@ -115,6 +117,11 @@ class BaseToolConfig(ABC):
         return {}
 
     @abstractmethod
+    def get_db(self) -> Optional[Any]:
+        """Get database session. Returns None for standalone usage."""
+        pass
+
+    @abstractmethod
     def get_asr_model(self) -> Optional[Any]:
         """Get default ASR (speech-to-text) model."""
         pass
@@ -128,6 +135,30 @@ class BaseToolConfig(ABC):
     def get_llm(self) -> Optional[Any]:
         """Get default LLM for general tasks."""
         pass
+
+    def get_max_output_length(self) -> int:
+        """Get maximum output length in characters.
+
+        Reads from XAGENT_TOOL_MAX_OUTPUT_LENGTH env var if set.
+        See :mod:`xagent.config` for details.
+        """
+        return _root_config.get_tool_max_output_length()
+
+    def get_max_field_count(self) -> int:
+        """Get maximum number of fields/items in dict/list for output filtering.
+
+        Reads from XAGENT_TOOL_MAX_FIELD_COUNT env var if set.
+        See :mod:`xagent.config` for details.
+        """
+        return _root_config.get_tool_max_field_count()
+
+    def get_max_recursion_depth(self) -> int:
+        """Get maximum recursion depth for output filtering.
+
+        Reads from XAGENT_TOOL_MAX_RECURSION_DEPTH env var if set.
+        See :mod:`xagent.config` for details.
+        """
+        return _root_config.get_tool_max_recursion_depth()
 
 
 class ToolConfig(BaseToolConfig):
@@ -152,6 +183,30 @@ class ToolConfig(BaseToolConfig):
         user_id = config_dict.get("user_id")
         is_admin = config_dict.get("is_admin", False)
         tool_credentials = config_dict.get("tool_credentials", {})
+
+        # Output limit configuration (uses environment variable as default)
+        # Store custom values if provided, otherwise use None to fall back to base class defaults
+        self._custom_max_output_length: int | None = None
+        try:
+            self._custom_max_output_length = int(
+                config_dict.get("max_output_length")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
+        self._custom_max_field_count: int | None = None
+        try:
+            self._custom_max_field_count = int(
+                config_dict.get("max_field_count")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
+        self._custom_max_recursion_depth: int | None = None
+        try:
+            self._custom_max_recursion_depth = int(
+                config_dict.get("max_recursion_depth")  # type: ignore[arg-type]
+            )
+        except (TypeError, ValueError):
+            pass
 
         self.workspace_config: Optional[Dict[str, Any]] = workspace_config
         self.vision_model: Optional[Any] = (
@@ -257,3 +312,22 @@ class ToolConfig(BaseToolConfig):
 
     def get_sql_connections(self) -> Dict[str, str]:
         return {}
+
+    def get_max_output_length(self) -> int:
+        if self._custom_max_output_length is not None:
+            return self._custom_max_output_length
+        return super().get_max_output_length()
+
+    def get_max_field_count(self) -> int:
+        if self._custom_max_field_count is not None:
+            return self._custom_max_field_count
+        return super().get_max_field_count()
+
+    def get_max_recursion_depth(self) -> int:
+        if self._custom_max_recursion_depth is not None:
+            return self._custom_max_recursion_depth
+        return super().get_max_recursion_depth()
+
+    def get_db(self) -> Optional[Any]:
+        """ToolConfig (standalone) does not have database access."""
+        return None
