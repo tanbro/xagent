@@ -24,9 +24,8 @@ import {
   Plug,
   Zap,
   Settings,
-  Unlink,
+  Trash2,
   Plus,
-  ChevronDown
 } from "lucide-react"
 import { useI18n } from "@/contexts/i18n-context"
 import { useAuth } from "@/contexts/auth-context"
@@ -40,6 +39,8 @@ import { Label } from "@/components/ui/label"
 import { useEffect } from "react"
 import { MCPServer } from "@/app/tools/page"
 
+import { isValidMcpName, buildCustomApiPayload } from "@/lib/mcp-utils"
+
 export interface AppIntegration {
   id: string
   name: string
@@ -51,12 +52,15 @@ export interface AppIntegration {
   category?: string
   is_local?: boolean
   server_id?: number
+  transport?: string
   connected_account?: string
   is_custom?: boolean
   server?: MCPServer
 }
 
 import { OfficialMcpSettingsDialog } from "./official-mcp-settings-dialog"
+import { CustomApiForm } from "./custom-api-form"
+import { CustomMcpForm } from "./custom-mcp-form"
 
 interface ConnectMcpDialogProps {
   open: boolean
@@ -97,6 +101,7 @@ export function ConnectMcpDialog({
 
   // Custom MCP Server state
   const [isSavingCustom, setIsSavingCustom] = useState(false)
+  const [customApiEnv, setCustomApiEnv] = useState<{ key: string, value: string }[]>([{ key: "", value: "" }])
   const [transports, setTransports] = useState<any[]>([])
   const [mcpFormData, setMcpFormData] = useState({
     name: "",
@@ -181,50 +186,92 @@ export function ConnectMcpDialog({
       toast.error(t('tools.mcp.alerts.nameRequired'))
       return
     }
+
+    if (!isValidMcpName(mcpFormData.name)) {
+      toast.error(t('tools.mcp.alerts.nameInvalidFormat') || "Name can only contain letters, numbers, hyphens and underscores");
+      return;
+    }
+
+    let payload = { ...mcpFormData };
+    let url = "";
+    let method = editingCustomServerId ? 'PUT' : 'POST';
+
+    if (payload.transport === "custom_api") {
+      const buildResult = buildCustomApiPayload(payload, customApiEnv);
+      if (!buildResult.isValid) {
+        toast.error(t(buildResult.errorKey || 'tools.mcp.alerts.atLeastOneSecret'));
+        return;
+      }
+      payload = buildResult.payload;
+
+      url = editingCustomServerId
+        ? `${getApiUrl()}/api/custom-apis/${editingCustomServerId}`
+        : `${getApiUrl()}/api/custom-apis`;
+
+      setIsSavingCustom(true)
+      try {
+        const response = await apiRequest(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        await handleSaveResponse(response);
+      } catch (error) {
+        console.error("Failed to save custom API:", error)
+        toast.error(t('tools.mcp.alerts.saveFailed'))
+        setIsSavingCustom(false)
+      }
+      return;
+    }
+
+    // Regular MCP logic
     setIsSavingCustom(true)
     try {
-      const url = editingCustomServerId
+      url = editingCustomServerId
         ? `${getApiUrl()}/api/mcp/servers/${editingCustomServerId}`
         : `${getApiUrl()}/api/mcp/servers`
-      const method = editingCustomServerId ? 'PUT' : 'POST'
 
       const response = await apiRequest(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(mcpFormData)
+        body: JSON.stringify(payload)
       })
-      if (response.ok) {
-        toast.success(t('tools.mcp.buttons.save'))
-        if (onSuccess) onSuccess()
-        loadApps()
-
-        // If in select mode (agent builder), switch to local tab and select the new server
-        if (isSelectMode) {
-          if (!editingCustomServerId) {
-            const newServerName = mcpFormData.name;
-            setLocalSelectedServers(prev => prev.includes(newServerName) ? prev : [...prev, newServerName]);
-            setActiveLocation("local");
-          }
-          setActiveTab("library");
-        } else {
-          // If in standalone tools page, just close the dialog
-          onOpenChange(false);
-        }
-
-        setEditingCustomServerId(null)
-        setMcpFormData({ name: "", transport: "stdio", description: "", config: {} })
-      } else {
-        const error = await response.json()
-        toast.error(error.detail || t('tools.mcp.alerts.saveFailed'))
-      }
+      await handleSaveResponse(response);
     } catch (error) {
       console.error("Failed to save custom MCP server:", error)
       toast.error(t('tools.mcp.alerts.saveFailed'))
-    } finally {
       setIsSavingCustom(false)
     }
+  }
+
+  const handleSaveResponse = async (response: any) => {
+    if (response.ok) {
+      toast.success(t('tools.mcp.buttons.save'))
+      if (onSuccess) onSuccess()
+      loadApps()
+
+      // If in select mode (agent builder), switch to local tab and select the new server
+      if (isSelectMode) {
+        if (!editingCustomServerId) {
+          const newServerName = mcpFormData.name;
+          setLocalSelectedServers(prev => prev.includes(newServerName) ? prev : [...prev, newServerName]);
+          setActiveLocation("local");
+        }
+        setActiveTab("library");
+      } else {
+        // If in standalone tools page, just close the dialog
+        onOpenChange(false);
+      }
+
+      setEditingCustomServerId(null)
+      setMcpFormData({ name: "", transport: "stdio", description: "", config: {} })
+    } else {
+      const error = await response.json()
+      toast.error(error.detail || t('tools.mcp.alerts.saveFailed'))
+    }
+    setIsSavingCustom(false)
   }
 
   const isSelectMode = !!onConnectSelected;
@@ -287,10 +334,24 @@ export function ConnectMcpDialog({
   }
 
   const handleDisconnectApp = async (app: AppIntegration) => {
-    const server = globalMcpServers.find(s => s.name.toLowerCase() === app.id.toLowerCase() || s.name.toLowerCase() === app.name.toLowerCase());
-    if (server) {
+    // Determine if it's a custom API or an MCP server
+    const isCustomApi = app.transport === 'custom_api' || app.is_custom;
+    const server = globalMcpServers.find(s =>
+      (s.name.toLowerCase() === app.id.toLowerCase() || s.name.toLowerCase() === app.name.toLowerCase()) &&
+      (isCustomApi ? s.transport === 'custom_api' : s.transport !== 'custom_api')
+    );
+
+    // For custom APIs, we might not have them in globalMcpServers since that fetches from /api/mcp/servers
+    // We should use app.server_id if available
+    const serverId = server ? server.id : app.server_id;
+
+    if (serverId) {
       try {
-        const response = await apiRequest(`${getApiUrl()}/api/mcp/servers/${server.id}`, {
+        const endpoint = isCustomApi
+          ? `${getApiUrl()}/api/custom-apis/${serverId}`
+          : `${getApiUrl()}/api/mcp/servers/${serverId}`;
+
+        const response = await apiRequest(endpoint, {
           method: 'DELETE'
         });
         if (response.ok) {
@@ -332,7 +393,7 @@ export function ConnectMcpDialog({
       <DialogContent className="sm:max-w-5xl md:max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden gap-0 bg-slate-50">
         <DialogHeader className="px-6 py-4 border-b bg-white shrink-0">
           <DialogTitle className="text-xl flex items-center gap-2 font-bold">
-            <Plug className="h-5 w-5 text-blue-600" /> {t('tools.mcp.dialog.connectMcp')}
+            <Plug className="h-5 w-5 text-blue-600" /> {t('tools.mcp.dialog.connector')}
           </DialogTitle>
         </DialogHeader>
 
@@ -344,6 +405,22 @@ export function ConnectMcpDialog({
                 className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 rounded-none h-full px-0 font-semibold flex items-center gap-2"
               >
                 <LayoutTemplate className="h-4 w-4" /> {t('tools.mcp.dialog.browseLibrary')}
+              </TabsTrigger>
+              <TabsTrigger
+                value="custom_api"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 rounded-none h-full px-0 font-semibold flex items-center gap-2 text-slate-500"
+                onClick={() => {
+                  setEditingCustomServerId(null)
+                  setMcpFormData({
+                    name: "",
+                    transport: "custom_api",
+                    description: "",
+                    config: { env: {} }
+                  })
+                  setCustomApiEnv([{ key: "", value: "" }])
+                }}
+              >
+                <Globe className="h-4 w-4" /> {t('tools.mcp.dialog.customApi')}
               </TabsTrigger>
               <TabsTrigger
                 value="custom"
@@ -363,7 +440,7 @@ export function ConnectMcpDialog({
                   }
                 }}
               >
-                <Link2 className="h-4 w-4" /> {t('tools.mcp.dialog.connectCustom')}
+                <Link2 className="h-4 w-4" /> {t('tools.mcp.dialog.customMcp')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -587,6 +664,46 @@ export function ConnectMcpDialog({
               </div>
             </div>
           </TabsContent>
+          <TabsContent value="custom_api" className="flex-1 overflow-y-auto p-6 m-0 bg-slate-50/50">
+            <div className="max-w-2xl mx-auto w-full">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold">{editingCustomServerId ? t('tools.mcp.dialog.editCustomApi') : t('tools.mcp.dialog.addCustomApi')}</h2>
+                <p className="text-sm text-slate-500 mt-1">{t('tools.mcp.dialog.customApiDescription')}</p>
+              </div>
+
+              <div className="space-y-4">
+                <CustomApiForm
+                  mcpFormData={mcpFormData}
+                  setMcpFormData={setMcpFormData}
+                  customApiEnv={customApiEnv}
+                  setCustomApiEnv={setCustomApiEnv}
+                  originalEnvObj={
+                    editingCustomServerId
+                      ? globalMcpServers.find(s => s.id === editingCustomServerId && s.transport === "custom_api")?.config?.env || {}
+                      : {}
+                  }
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 mt-8 pt-4 border-t">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  {t('tools.mcp.buttons.cancel')}
+                </Button>
+                <Button
+                  onClick={handleSaveCustomMcp}
+                  disabled={
+                    isSavingCustom ||
+                    !mcpFormData.name.trim() ||
+                    !customApiEnv.some(env => env.key.trim() && env.value.trim())
+                  }
+                >
+                  {isSavingCustom && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {t('tools.mcp.buttons.save')}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
           <TabsContent value="custom" className="flex-1 overflow-y-auto p-6 m-0 bg-slate-50/50">
             {customContent ? customContent : (
               <div className="max-w-2xl mx-auto w-full">
@@ -596,75 +713,11 @@ export function ConnectMcpDialog({
                 </div>
 
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">{t('tools.mcp.form.nameLabel')}</Label>
-                    <Input
-                      id="name"
-                      value={mcpFormData.name}
-                      onChange={(e) => setMcpFormData(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder={t('tools.mcp.form.namePlaceholder')}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="transport">{t('tools.mcp.form.transportLabel')}</Label>
-                    <Select
-                      value={mcpFormData.transport}
-                      onValueChange={(value: string) => setMcpFormData(prev => ({ ...prev, transport: value }))}
-                      options={transports}
-                      placeholder={t('tools.mcp.form.transportPlaceholder')}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">{t('tools.mcp.form.descriptionLabel')}</Label>
-                    <Textarea
-                      id="description"
-                      value={mcpFormData.description}
-                      onChange={(e) => setMcpFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder={t('tools.mcp.form.descriptionPlaceholder')}
-                      rows={3}
-                    />
-                  </div>
-                  {(() => {
-                    const selectedTransport = transports.find(t => t.value === mcpFormData.transport);
-                    return selectedTransport?.fields?.map((field: any) => (
-                      <div key={field.name} className="space-y-2">
-                        <Label htmlFor={field.name}>{field.label} {field.required && "*"}</Label>
-                        {field.type === 'textarea' ? (
-                          <Textarea
-                            id={field.name}
-                            value={mcpFormData.config[field.name] || ''}
-                            onChange={(e) => setMcpFormData(prev => ({
-                              ...prev,
-                              config: { ...prev.config, [field.name]: e.target.value }
-                            }))}
-                            placeholder={field.placeholder}
-                            rows={3}
-                          />
-                        ) : field.type === 'select' ? (
-                          <Select
-                            value={mcpFormData.config[field.name] || ''}
-                            onValueChange={(value: string) => setMcpFormData(prev => ({
-                              ...prev,
-                              config: { ...prev.config, [field.name]: value }
-                            }))}
-                            options={field.options || []}
-                            placeholder={field.placeholder}
-                          />
-                        ) : (
-                          <Input
-                            id={field.name}
-                            type={field.type === 'number' ? 'number' : 'text'}
-                            value={mcpFormData.config[field.name] || ''}
-                            onChange={(e) => setMcpFormData(prev => ({
-                              ...prev,
-                              config: { ...prev.config, [field.name]: field.type === 'number' ? Number(e.target.value) : e.target.value }
-                            }))}
-                            placeholder={field.placeholder}
-                          />
-                        )}
-                      </div>
-                    ));
-                  })()}
+                  <CustomMcpForm
+                    mcpFormData={mcpFormData}
+                    setMcpFormData={setMcpFormData}
+                    transports={transports}
+                  />
                 </div>
                 <div className="flex justify-end gap-3 mt-8">
                   <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -712,7 +765,11 @@ export function ConnectMcpDialog({
         app={(() => {
           if (!selectedApp) return null;
           // Find the actual server from globalMcpServers to get the real numeric ID
-          const server = globalMcpServers.find(s => s.name.toLowerCase() === selectedApp.id.toLowerCase() || s.name.toLowerCase() === selectedApp.name.toLowerCase());
+          const isCustomApi = selectedApp.transport === 'custom_api' || selectedApp.is_custom;
+          const server = globalMcpServers.find(s =>
+            (s.name.toLowerCase() === selectedApp.id.toLowerCase() || s.name.toLowerCase() === selectedApp.name.toLowerCase()) &&
+            (isCustomApi ? s.transport === 'custom_api' : s.transport !== 'custom_api')
+          );
 
           if (server) {
             // Merge the server ID into the app object so the child dialog can use it for deletion
@@ -736,9 +793,10 @@ export function ConnectMcpDialog({
               name.toLowerCase() !== disconnectedApp.name.toLowerCase() &&
               name.toLowerCase() !== disconnectedApp.id.toLowerCase()
             );
-            // Immediately sync back to parent if we disconnected so it's globally deselected
+            // Use setTimeout to move the parent state update out of the render cycle
+            // This prevents React "setState in render" warning and potential crashes
             if (onConnectSelected) {
-              onConnectSelected(newSelection);
+              setTimeout(() => onConnectSelected(newSelection), 0);
             }
             return newSelection;
           });
@@ -754,7 +812,15 @@ export function ConnectMcpDialog({
               description: appToConfigure.server.description || "",
               config: appToConfigure.server.config || {}
             });
-            setActiveTab("custom");
+            if (appToConfigure.server.transport === "custom_api") {
+              const envObj = appToConfigure.server.config?.env || {};
+              const envList = Object.entries(envObj).map(([k, v]) => ({ key: k, value: v as string }));
+              if (envList.length === 0) {
+                envList.push({ key: "", value: "" });
+              }
+              setCustomApiEnv(envList);
+            }
+            setActiveTab(appToConfigure.server.transport === "custom_api" ? "custom_api" : "custom");
           }
         }}
       />

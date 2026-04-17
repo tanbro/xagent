@@ -251,6 +251,7 @@ def _build_server_config(
                     parsed_value = _parse_config_field(
                         field_name, value, server_data.transport
                     )
+
                     if parsed_value is not None:
                         config_dict[field_name] = parsed_value
                 except ValueError as e:
@@ -265,7 +266,6 @@ def _build_server_config(
             if key not in config_dict and value is not None:
                 config_dict[key] = value
 
-    # Validate transport-specific requirements
     TransportFieldValidator.validate_transport_fields(
         server_data.transport, config_dict
     )
@@ -521,6 +521,44 @@ async def list_mcp_apps(
                 }
             )
 
+        # Append Custom APIs
+        from ..models.custom_api import CustomApi, UserCustomApi
+
+        user_custom_apis = (
+            db.query(UserCustomApi, CustomApi)
+            .join(CustomApi, UserCustomApi.custom_api_id == CustomApi.id)
+            .filter(UserCustomApi.user_id == current_user.id)
+            .all()
+        )
+
+        for user_api, api in user_custom_apis:
+            if search:
+                search_lower = search.lower()
+                if search_lower not in api.name.lower() and (
+                    api.description and search_lower not in api.description.lower()
+                ):
+                    continue
+
+            if category and category != "All":
+                continue
+
+            results.append(
+                {
+                    "id": api.name,
+                    "name": api.name,
+                    "description": api.description or "Custom API",
+                    "icon": "",
+                    "users": "1",
+                    "transport": "custom_api",
+                    "is_connected": True,
+                    "provider": "custom",
+                    "category": "Local",
+                    "is_local": True,
+                    "server_id": api.id,
+                    "is_custom": True,
+                }
+            )
+
     return results
 
 
@@ -563,6 +601,38 @@ async def list_mcp_servers(
             responses.append(
                 _db_server_to_response(
                     server, user_mcp, manager, connected_account, app_id, provider
+                )
+            )
+
+        # Append Custom APIs
+        from ..models.custom_api import CustomApi, UserCustomApi
+
+        user_custom_apis = (
+            db.query(UserCustomApi, CustomApi)
+            .join(CustomApi, UserCustomApi.custom_api_id == CustomApi.id)
+            .filter(UserCustomApi.user_id == user_id)
+            .all()
+        )
+
+        for user_api, api in user_custom_apis:
+            # Mask env values
+            masked_env = {}
+            if api.env and isinstance(api.env, dict):
+                masked_env = {k: "********" for k in api.env.keys()}
+
+            responses.append(
+                MCPServerResponse(
+                    id=api.id,
+                    user_id=user_api.user_id,
+                    name=api.name,
+                    transport="custom_api",
+                    description=api.description,
+                    config={"env": masked_env},
+                    is_active=user_api.is_active,
+                    is_default=user_api.is_default,
+                    transport_display="Custom API",
+                    created_at=str(api.created_at.isoformat()),
+                    updated_at=str(api.updated_at.isoformat()),
                 )
             )
 

@@ -63,6 +63,7 @@ class ToolRegistry:
                 audio_tool,
                 basic_tools,
                 browser_tools,
+                custom_api_factory,
                 image_tool,
                 knowledge_tools,
                 mcp_tools,
@@ -323,6 +324,7 @@ class ToolFactory:
 
             # Convert configs to connection format
             connections = {}
+
             for config in mcp_configs:
                 connection_config = {
                     "transport": config["transport"],
@@ -352,7 +354,10 @@ class ToolFactory:
 
             # Load MCP tools
             mcp_tools = await load_mcp_tools_as_agent_tools(connections)  # type: ignore[arg-type]
-            return mcp_tools if mcp_tools else []  # type: ignore[return-value]
+            if not mcp_tools:
+                mcp_tools = []
+
+            return mcp_tools  # type: ignore[return-value]
         except Exception as e:
             logger.warning(f"Failed to create MCP tools: {e}")
             return []
@@ -383,16 +388,24 @@ class ToolFactory:
                         UserMCPServer, MCPServer.id == UserMCPServer.mcpserver_id
                     ).filter(UserMCPServer.user_id == user_id, UserMCPServer.is_active)
 
-                connections = manager.get_connections(filter_by_user)
+                all_connections = manager.get_connections(filter_by_user)
             else:
-                connections = manager.get_connections()
+                all_connections = manager.get_connections()
 
-            if not connections:
+            if not all_connections:
                 return []
 
+            connections = {}
+
+            for name, config in all_connections.items():
+                connections[name] = config
+
             # Load MCP tools
-            mcp_tools = await load_mcp_tools_as_agent_tools(connections)
-            return mcp_tools if mcp_tools else []
+            mcp_tools = (
+                await load_mcp_tools_as_agent_tools(connections) if connections else []
+            )
+
+            return mcp_tools
         except Exception as e:
             logger.warning(f"Failed to create MCP tools from database: {e}")
             return []
