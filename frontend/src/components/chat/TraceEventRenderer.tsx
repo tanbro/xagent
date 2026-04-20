@@ -725,27 +725,27 @@ function StepActionItem({ action, onViewDetail, onOpenTerminal, onFileClick, onA
               "bg-muted/50 border-transparent hover:bg-muted/60 text-muted-foreground/80 hover:text-foreground"
         )}
       >
-        <div className="flex flex-1 flex-row flex-wrap items-center gap-2 overflow-x-auto sm:items-start min-w-[0]">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-2 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="flex-shrink-0 flex items-center">
               {action.type === 'tool' && <Wrench className="w-3.5 h-3.5" />}
               {action.type === 'error' && <Info className="w-3.5 h-3.5 text-red-500" />}
               {action.type === 'info' && <Info className="w-3.5 h-3.5" />}
             </span>
 
-            <span className="font-medium whitespace-nowrap">{action.title}</span>
+            <span className="font-medium whitespace-nowrap truncate">{action.title}</span>
           </div>
 
-          <div>
+          <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
             {action.data.sandboxed && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 whitespace-nowrap">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 whitespace-nowrap flex-shrink-0">
                 <Shield className="w-3 h-3" />
                 {t('traceEventRenderer.sandboxedExecution')}
               </span>
             )}
 
             {summary && (
-              <span className="text-muted-foreground/50 font-normal ml-1 hidden sm:block max-w-[600px]">
+              <span className="text-muted-foreground/50 font-normal ml-1 hidden sm:block min-w-0 truncate">
                 - {summary}
               </span>
             )}

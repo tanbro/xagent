@@ -49,6 +49,10 @@ class OutputFilteredToolWrapper(AbstractBaseTool):
         self._filter = OutputValueFilter(max_chars, max_fields, max_recursion)
 
     @property
+    def is_sandboxed(self) -> bool:
+        return getattr(self._target, "is_sandboxed", False)
+
+    @property
     def name(self) -> str:
         return self._target.name
 

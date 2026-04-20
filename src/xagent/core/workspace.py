@@ -55,7 +55,9 @@ class TaskWorkspace:
         self.id = id
         if base_dir is None:
             base_dir = str(get_uploads_dir())
-        self.base_dir = Path(base_dir)
+        self.base_dir = (
+            Path(base_dir).expanduser().resolve()
+        )  # Resolve base_dir to absolute path for consistent workspace reconstruction
         self.db_session = None  # Optional database session for file registration
         self._recently_registered_files: Dict[str, str] = {}  # path -> file_id mapping
         self._file_id_to_path: Dict[str, Path] = {}  # file_id -> path reverse mapping

@@ -18,7 +18,7 @@ from ..config import (
     get_uploads_dir,
 )
 from ..core.tools.adapters.vibe.sandboxed_tool.sandboxed_tool_wrapper import (
-    upload_code_to_sandbox,
+    build_code_mount_volumes,
 )
 from ..sandbox import SandboxService
 from ..sandbox.base import Sandbox, SandboxConfig, SandboxTemplate
@@ -87,30 +87,34 @@ class SandboxManager:
 
         return image, config
 
-    def _make_volumes(
+    def _make_default_volumes(
         self,
         lifecycle_type: str,
         lifecycle_id: str,
         *,
         ensure_dir: bool,
-    ) -> Optional[list[tuple[str, str, str]]]:
+    ) -> list[tuple[str, str, str]]:
         """
-        Build volume param.
+        Build default volume mounts.
 
-        Only supports user lifecycle type at the moment.
+        Code directories are always mounted read-only.
+        User workspace is additionally mounted read-write for user lifecycle type.
 
         Args:
             lifecycle_type: e.g. task|user
             lifecycle_id: e.g. task_id|user_id
             ensure_dir: When True, create the host directory
         """
-        volumes: Optional[list[tuple[str, str, str]]] = None
+        # Code mounts are always present (at least src/)
+        volumes: list[tuple[str, str, str]] = list(build_code_mount_volumes())
+
+        # Mount user workspace as read-write
         if lifecycle_type == "user":
             user_workspace = str((get_uploads_dir() / f"user_{lifecycle_id}").resolve())
             if ensure_dir:
                 os.makedirs(user_workspace, exist_ok=True)
-            # Use the same absolute path for both host and sandbox.
-            volumes = [(user_workspace, user_workspace, "rw")]
+            volumes.append((user_workspace, user_workspace, "rw"))
+
         return volumes
 
     async def get_or_create_sandbox(
@@ -154,13 +158,12 @@ class SandboxManager:
 
             template = SandboxTemplate(type="image", image=image)
 
-            # Merge user-specific volumes
-            user_volumes = self._make_volumes(
+            default_volumes = self._make_default_volumes(
                 lifecycle_type, lifecycle_id, ensure_dir=True
             )
-            if user_volumes:
-                existing_volumes = list(config.volumes) if config.volumes else []
-                config.volumes = existing_volumes + user_volumes
+            config_volumes = list(config.volumes) if config.volumes else []
+            # Merge volumes
+            config.volumes = config_volumes + default_volumes
 
             logger.debug(f"Getting or creating sandbox for: {sandbox_name}")
             sandbox = await self._service.get_or_create(
@@ -169,8 +172,6 @@ class SandboxManager:
                 config=config,
             )
 
-            # Package and upload xagent code
-            await upload_code_to_sandbox(sandbox)
             self._cache[sandbox_name] = sandbox
             return sandbox
 
@@ -256,15 +257,13 @@ class SandboxManager:
 
                     # volumes comparison: None and empty list are treated as equal, ignore order
                     old_volumes = sb.config.volumes or []
-                    new_volumes = config.volumes or []
 
-                    # For user lifecycle type, add user-specific volumes for comparison
-                    if lifecycle_type == "user":
-                        expected_user_volumes = self._make_volumes(
-                            lifecycle_type, lifecycle_id, ensure_dir=False
-                        )
-                        if expected_user_volumes:
-                            new_volumes = list(new_volumes) + expected_user_volumes
+                    default_volumes = self._make_default_volumes(
+                        lifecycle_type, lifecycle_id, ensure_dir=False
+                    )
+                    config_volumes = list(config.volumes) if config.volumes else []
+                    # Merge volumes
+                    new_volumes = config_volumes + default_volumes
 
                     volumes_changed = set(old_volumes) != set(new_volumes)
 

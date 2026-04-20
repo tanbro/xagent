@@ -251,12 +251,13 @@ class ToolFactory:
         Returns:
             Tool list with sandbox-enabled tools wrapped
         """
-        from .sandboxed_tool.sandboxed_tool_config import is_sandbox_enabled
+        from .sandboxed_tool.sandbox_config import resolve_sandbox_config
         from .sandboxed_tool.sandboxed_tool_wrapper import create_sandboxed_tool
 
         wrapped_tools: List[Tool] = []
         for tool in tools:
-            if is_sandbox_enabled(tool.name):
+            sb_config = resolve_sandbox_config(tool)
+            if sb_config is not None and sb_config.enabled:
                 try:
                     wrapped = await create_sandboxed_tool(
                         tool=tool,
